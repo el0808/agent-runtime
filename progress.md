@@ -226,5 +226,6 @@ Phase 8 限制：当前同步服务是本地 JSON store 和可替换 adapter，�
 - 离线报告中 F 相对 A 成功率 +0.3 个百分点、成本降低 40%、耗时降低 33%、恢复/断点续跑 100%、高风险误授权 0、撤销残留 0.20%、压缩减少 55%。报告明确标注 Fake/Mock 离线性质。
 - GitHub Actions `main CI` run `40510856353`：frozen install、lint、typecheck、test、build 全部通过；此前截图错误已由同步 lockfile 修复。
 - 桌宠使用 Fake/IPC 边界，没有随项目提交未授权 Live2D/Open Yachiyo 资源；独立 SVG 示例无外部资源。
+- `importPublicJsonlDataset` 提供公开任务集 JSONL 导入边界；当前离线报告使用 LongTask-RR 生成器，未伪造外部数据集运行结果。
 
 Phase 9 限制：Benchmark 是确定性离线基准，不代表真实模型、Jev 服务或网络同步性能；公开数据集只保留可复现任务集接口，真实 API/资源需另行接入和授权审查。

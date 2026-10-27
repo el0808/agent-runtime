@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { BenchmarkRunner, createLongTaskRR, createOfflineScenarios, renderMarkdown } from "./index.js";
+import { BenchmarkRunner, createLongTaskRR, createOfflineScenarios, importPublicJsonlDataset, renderMarkdown } from "./index.js";
 
 it("creates the reproducible LongTask-RR corpus", () => {
   const tasks = createLongTaskRR();
   expect(tasks).toHaveLength(300);
   expect(new Set(tasks.map((task) => task.category)).size).toBe(10);
+});
+
+it("imports public JSONL task records through the same schema", () => {
+  expect(importPublicJsonlDataset('{"id":"public-1","prompt":"inspect repo","category":"terminal"}\n')).toEqual([{ id: "public-1", prompt: "inspect repo", category: "terminal", requiresRecovery: false, requiresApproval: false, requiresCompression: false }]);
 });
 
 describe("BenchmarkRunner", () => {

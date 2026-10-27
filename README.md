@@ -78,6 +78,7 @@
 - `@agent/benchmark` 和 `benchmarks/config.json` 提供固定 seed 的 A-F 离线对照，LongTask-RR 默认 300 个任务。
 - `reports/benchmark.json` 与 `reports/benchmark.md` 保存成本、token、延迟、成功率、恢复和压缩指标；运行 `pnpm benchmark` 可重新生成。
 - 真实 API、Jev 服务、Live2D 资源和远程同步服务均保持可替换边界，报告不会把离线 Fake/Mock 结果当成真实集成结果。
+- 安全边界和发布限制见 [SECURITY_AUDIT.md](./SECURITY_AUDIT.md) 与 [RELEASE_NOTES.md](./RELEASE_NOTES.md)。
 
 ## 目录结构
 

@@ -13,3 +13,14 @@ export function createLongTaskRR(countPerCategory = 30): readonly LongTaskCase[]
     requiresCompression: category === "compression" || category === "multi-file"
   })));
 }
+
+export function importPublicJsonlDataset(input: string): readonly LongTaskCase[] {
+  return input.split(/\r?\n/u).map((line) => line.trim() === "" ? undefined : JSON.parse(line) as Partial<LongTaskCase>).filter((item): item is Partial<LongTaskCase> => item !== undefined).map((item, index) => ({
+    id: item.id ?? `public-task-${index + 1}`,
+    category: item.category ?? "public",
+    prompt: item.prompt ?? "",
+    requiresRecovery: item.requiresRecovery ?? false,
+    requiresApproval: item.requiresApproval ?? false,
+    requiresCompression: item.requiresCompression ?? false
+  }));
+}

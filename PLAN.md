@@ -358,12 +358,12 @@ F. 你的 Runtime + Jev + Verifier + Recovery
 
 ### Phase 0：项目初始化
 
-- [ ] 创建 TypeScript + Node.js Monorepo；
-- [ ] 配置 pnpm、TypeScript、ESLint、Vitest；
-- [ ] 定义包结构；
-- [ ] 建立统一错误码和日志格式；
-- [ ] 编写 ARCHITECTURE.md；
-- [ ] 建立 Git 分支和 CI。
+- [x] 创建 TypeScript + Node.js Monorepo；
+- [x] 配置 pnpm、TypeScript、ESLint、Vitest；
+- [x] 定义包结构；
+- [x] 建立统一错误码和日志格式；
+- [x] 编写 ARCHITECTURE.md；
+- [x] 建立 Git 分支和 CI。
 
 ### Phase 1：协议和事件账本
 
