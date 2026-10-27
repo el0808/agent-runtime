@@ -74,3 +74,10 @@
 - 导入先写入 LocalSyncStore 再按 RuntimeEvent sequence 追加 TaskLedger，`task.created` 只在目标设备没有任务时创建，避免重复执行。
 - 同版本不同 payload 产生显式冲突，较旧版本丢弃；checkpoint 和工具/验证事件作为独立 entity 传输，设备 B 可在导入后恢复。
 - GitHub CI 的 frozen lockfile 失败来自 workspace package 新增依赖未同步锁文件；每次新增包依赖后先运行 `pnpm install --lockfile-only` 并提交 lockfile。
+
+## 2026-10-27 — Phase 9
+
+- Benchmark Runner 采用纯 TypeScript、固定 seed 和可注入 scenario，不把真实 API、Jev 或 Live2D 可用性伪装成测试结果；离线报告明确写明 Fake/Mock 性质。
+- LongTask-RR 按 10 类故障/恢复主题程序化生成，每类默认 30 个任务，避免手写样本无法复现；A-F 配置共享同一任务集和指标。
+- 报告同时输出 JSON 和 Markdown，指标覆盖成功率、成本、token、延迟、恢复、断点续跑、误授权、撤销残留和压缩减少量；消融组通过配置差异比较 Jev、Verifier 和 Recovery 的作用。
+- 发布前检查包含 lockfile frozen install、全量测试、桌宠资源边界和独立 SVG 示例；CI 中 Node 20 action deprecation/Ubuntu 迁移仅为 warning，不影响验证结果。

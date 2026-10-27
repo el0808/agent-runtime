@@ -35,6 +35,12 @@ importers:
 
   apps/runtime: {}
 
+  packages/benchmark:
+    dependencies:
+      '@agent/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+
   packages/memory:
     dependencies:
       '@agent/protocol':

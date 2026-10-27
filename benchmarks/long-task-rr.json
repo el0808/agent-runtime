@@ -1,0 +1,19 @@
+{
+  "name": "LongTask-RR",
+  "version": 1,
+  "categories": [
+    "multi-file",
+    "tool-failure",
+    "approval",
+    "network-disconnect",
+    "model-timeout",
+    "process-crash",
+    "device-switch",
+    "compression",
+    "partial-rollback",
+    "full-recovery"
+  ],
+  "tasksPerCategory": 30,
+  "generator": "@agent/benchmark.createLongTaskRR",
+  "offline": true
+}

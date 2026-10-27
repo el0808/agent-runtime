@@ -1,0 +1,102 @@
+{
+  "generatedAt": "2026-10-27T13:47:09.675Z",
+  "seed": 20261027,
+  "repetitions": 1,
+  "datasetSize": 300,
+  "metrics": [
+    {
+      "config": "A-strong-baseline",
+      "label": "A-strong-baseline",
+      "taskCount": 300,
+      "successRate": 0.94,
+      "averageCostUsd": 1,
+      "averageTokens": 7000,
+      "averageLatencyMs": 1000,
+      "recoverySuccessRate": 0.4,
+      "resumeSuccessRate": 0.4,
+      "highRiskUnauthorized": 0,
+      "averageRollbackResidual": 0.03,
+      "compressionReduction": 0.5500000000000004
+    },
+    {
+      "config": "B-fast-baseline",
+      "label": "B-fast-baseline",
+      "taskCount": 300,
+      "successRate": 0.7633333333333333,
+      "averageCostUsd": 0.34999999999999837,
+      "averageTokens": 3200,
+      "averageLatencyMs": 680,
+      "recoverySuccessRate": 0.4,
+      "resumeSuccessRate": 0.4,
+      "highRiskUnauthorized": 0,
+      "averageRollbackResidual": 0.03,
+      "compressionReduction": 0.5500000000000004
+    },
+    {
+      "config": "C-runtime-no-jev",
+      "label": "C-runtime-no-jev",
+      "taskCount": 300,
+      "successRate": 0.89,
+      "averageCostUsd": 0.6200000000000025,
+      "averageTokens": 4100,
+      "averageLatencyMs": 790,
+      "recoverySuccessRate": 0.4,
+      "resumeSuccessRate": 0.4,
+      "highRiskUnauthorized": 0,
+      "averageRollbackResidual": 0.03,
+      "compressionReduction": 0.5500000000000004
+    },
+    {
+      "config": "D-runtime-jev",
+      "label": "D-runtime-jev",
+      "taskCount": 300,
+      "successRate": 0.92,
+      "averageCostUsd": 0.550000000000001,
+      "averageTokens": 3600,
+      "averageLatencyMs": 620,
+      "recoverySuccessRate": 0.4,
+      "resumeSuccessRate": 0.4,
+      "highRiskUnauthorized": 0,
+      "averageRollbackResidual": 0.03,
+      "compressionReduction": 0.5500000000000004
+    },
+    {
+      "config": "E-runtime-jev-verifier",
+      "label": "E-runtime-jev-verifier",
+      "taskCount": 300,
+      "successRate": 0.9433333333333334,
+      "averageCostUsd": 0.5800000000000023,
+      "averageTokens": 3800,
+      "averageLatencyMs": 650,
+      "recoverySuccessRate": 1,
+      "resumeSuccessRate": 1,
+      "highRiskUnauthorized": 0,
+      "averageRollbackResidual": 0.009999999999999933,
+      "compressionReduction": 0.5500000000000004
+    },
+    {
+      "config": "F-runtime-jev-verifier-recovery",
+      "label": "F-runtime-jev-verifier-recovery",
+      "taskCount": 300,
+      "successRate": 0.9433333333333334,
+      "averageCostUsd": 0.5999999999999966,
+      "averageTokens": 3900,
+      "averageLatencyMs": 670,
+      "recoverySuccessRate": 1,
+      "resumeSuccessRate": 1,
+      "highRiskUnauthorized": 0,
+      "averageRollbackResidual": 0.0020000000000000013,
+      "compressionReduction": 0.5500000000000004
+    }
+  ],
+  "targets": {
+    "successRateVsStrongBaseline": 0.0033333333333334103,
+    "costReductionVsStrongBaseline": 0.40000000000000335,
+    "latencyReductionVsStrongBaseline": 0.32999999999999996,
+    "recoverySuccessRate": 1,
+    "resumeSuccessRate": 1,
+    "maxHighRiskUnauthorized": 0,
+    "maxRollbackResidual": 0.0020000000000000013,
+    "compressionReduction": 0.5500000000000004
+  }
+}

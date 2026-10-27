@@ -1,0 +1,14 @@
+{
+  "seed": 20261027,
+  "repetitions": 1,
+  "configs": [
+    "A-strong-baseline",
+    "B-fast-baseline",
+    "C-runtime-no-jev",
+    "D-runtime-jev",
+    "E-runtime-jev-verifier",
+    "F-runtime-jev-verifier-recovery"
+  ],
+  "tasksPerCategory": 30,
+  "offline": true
+}

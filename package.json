@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "benchmark": "pnpm build && node scripts/run-benchmark.mjs",
     "typecheck": "tsc -b --pretty false"
   },
   "devDependencies": {

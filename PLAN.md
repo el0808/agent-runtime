@@ -465,16 +465,16 @@ F. 你的 Runtime + Jev + Verifier + Recovery
 
 ### Phase 9：Benchmark 和发布
 
-- [ ] 实现统一 Benchmark Runner；
-- [ ] 接入公开任务集；
-- [ ] 建立 `LongTask-RR`；
-- [ ] 运行 A～F 六组对照实验；
-- [ ] 做 Jev、Verifier、压缩、恢复的消融实验；
-- [ ] 记录成本、token、延迟、成功率；
-- [ ] 生成报告和可复现实验配置；
-- [ ] 完成安全审计；
-- [ ] 完成桌宠资源授权审查；
-- [ ] 发布 Demo、架构文档和 Benchmark 报告。
+- [x] 实现统一 Benchmark Runner；
+- [x] 接入公开任务集；
+- [x] 建立 `LongTask-RR`；
+- [x] 运行 A～F 六组对照实验；
+- [x] 做 Jev、Verifier、压缩、恢复的消融实验；
+- [x] 记录成本、token、延迟、成功率；
+- [x] 生成报告和可复现实验配置；
+- [x] 完成安全审计；
+- [x] 完成桌宠资源授权审查；
+- [x] 发布 Demo、架构文档和 Benchmark 报告。
 
 ## 8. 最终验收标准
 
