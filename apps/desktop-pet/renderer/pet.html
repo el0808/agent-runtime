@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent Pet</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #10131a;
+        --fg: #e6e9f0;
+        --accent: #7dd3fc;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        grid-template-rows: 1fr auto;
+        background: radial-gradient(circle at 50% 20%, #1b2030, var(--bg) 70%);
+        color: var(--fg);
+        font: 14px/1.5 ui-sans-serif, system-ui, sans-serif;
+        overflow: hidden;
+      }
+      #stage { position: relative; display: grid; place-items: center; }
+      canvas { max-width: 100%; height: auto; }
+      #bubble {
+        position: absolute;
+        top: 8%;
+        left: 50%;
+        transform: translateX(-50%);
+        max-width: min(70vw, 42rem);
+        padding: 0.6rem 0.9rem;
+        border-radius: 0.9rem;
+        background: rgba(20, 26, 38, 0.92);
+        border: 1px solid rgba(125, 211, 252, 0.35);
+        white-space: pre-wrap;
+        opacity: 0;
+        transition: opacity 160ms ease;
+        pointer-events: none;
+      }
+      #bubble.visible { opacity: 1; }
+      footer {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        padding: 0.75rem 1rem;
+        border-top: 1px solid rgba(125, 211, 252, 0.15);
+        font-variant-numeric: tabular-nums;
+      }
+      #state { color: var(--accent); min-width: 9rem; }
+      #log { color: #8b95a8; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <canvas id="pet" width="360" height="360" aria-label="desktop pet"></canvas>
+      <div id="bubble" role="status" aria-live="polite"></div>
+    </div>
+    <footer>
+      <span id="state">idle</span>
+      <span id="log">waiting for runtime events…</span>
+    </footer>
+
+    <script type="module">
+      // State machine mirrors packages/pet-adapter: the renderer never infers state,
+      // it only displays what the runtime publishes.
+      const STATES = ["idle", "listening", "thinking", "working", "waiting_approval", "verifying", "success", "error", "sleeping"];
+
+      const canvas = document.getElementById("pet");
+      const ctx = canvas.getContext("2d");
+      const bubble = document.getElementById("bubble");
+      const stateLabel = document.getElementById("state");
+      const logLabel = document.getElementById("log");
+
+      const palette = {
+        idle: "#7dd3fc",
+        listening: "#a5b4fc",
+        thinking: "#c4b5fd",
+        working: "#7dd3fc",
+        waiting_approval: "#fbbf24",
+        verifying: "#34d399",
+        success: "#4ade80",
+        error: "#f87171",
+        sleeping: "#64748b"
+      };
+
+      let state = "idle";
+      let mouth = 0;
+      let targetMouth = 0;
+      let bob = 0;
+
+      function applyEvent(event) {
+        if (typeof event.state === "string" && STATES.includes(event.state)) {
+          state = event.state;
+          stateLabel.textContent = state;
+        }
+        let text = event.text;
+        if (typeof event.textDelta === "string" && event.textDelta.length > 0) {
+          speak(event.textDelta);
+          text = undefined;
+        }
+        if (typeof text === "string" && text.length > 0) {
+          showBubble(text);
+        }
+        logLabel.textContent = `${event.sourceType ?? "runtime"} · ${event.taskId ?? "-"}`;
+        if (state === "sleeping") {
+          targetMouth = 0;
+        }
+      }
+
+      let bubbleTimer;
+      function showBubble(text) {
+        bubble.textContent = text.slice(-400);
+        bubble.classList.add("visible");
+        clearTimeout(bubbleTimer);
+        bubbleTimer = setTimeout(() => bubble.classList.remove("visible"), 4000);
+      }
+
+      // Mouth animation is a clamped decay driven by arriving text, standing in for
+      // a phoneme analyser until a real voice adapter supplies amplitude.
+      function speak(text) {
+        targetMouth = Math.min(1, 0.35 + text.length / 24);
+      }
+
+      function draw(t) {
+        const accent = palette[state];
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2 + Math.sin(bob) * 4;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // soft ground glow
+        const glow = ctx.createRadialGradient(cx, cy + 96, 8, cx, cy + 96, 120);
+        glow.addColorStop(0, `${accent}44`);
+        glow.addColorStop(1, "transparent");
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // body
+        ctx.fillStyle = "#1d2433";
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, 92, 104, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // eyes — sleep when idle for long, squint when erroring
+        const eyeY = cy - 24;
+        const look = state === "thinking" ? Math.sin(t / 300) * 4 : 0;
+        ctx.fillStyle = accent;
+        for (const dx of [-32, 32]) {
+          ctx.beginPath();
+          if (state === "sleeping") {
+            ctx.rect(cx + dx - 12, eyeY - 2, 24, 4);
+          } else if (state === "error") {
+            ctx.rect(cx + dx - 10, eyeY - 2, 20, 4);
+          } else {
+            ctx.ellipse(cx + dx + look, eyeY, 11, 14, 0, 0, Math.PI * 2);
+          }
+          ctx.fill();
+        }
+
+        // mouth — amplitude follows speech
+        targetMouth = Math.max(0, targetMouth - 0.02);
+        mouth += (targetMouth - mouth) * 0.25;
+        const mouthH = 4 + mouth * 18;
+        ctx.fillStyle = "#f472b6";
+        ctx.beginPath();
+        ctx.ellipse(cx, cy + 34, 20, mouthH, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // working indicator: orbiting dot
+        if (state === "working" || state === "verifying") {
+          const angle = (t / 500) % (Math.PI * 2);
+          ctx.fillStyle = accent;
+          ctx.beginPath();
+          ctx.arc(cx + Math.cos(angle) * 116, cy + Math.sin(angle) * 116, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // approval pulse: the pet must visibly wait for a human
+        if (state === "waiting_approval") {
+          const pulse = 1 + Math.sin(t / 240) * 0.06;
+          ctx.strokeStyle = "#fbbf24";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 118 * pulse, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        bob += 0.03;
+        requestAnimationFrame(draw);
+      }
+
+      requestAnimationFrame(draw);
+
+      // Live2D-compatible seam: any object with publish(event) can drive the pet,
+      // so an Electron IPC bridge or a WebSocket transport can replace SSE.
+      export function createSseTransport(url) {
+        const source = new EventSource(url);
+        const listeners = new Set();
+        source.onmessage = (message) => {
+          try {
+            const event = JSON.parse(message.data);
+            for (const listener of listeners) listener(event);
+          } catch {
+            // ignore malformed frames; the stream keeps running
+          }
+        };
+        for (const type of ["task.created","task.started","task.paused","task.resumed","task.completed","task.failed","task.cancelled","session.started","session.ended","model.requested","model.delta","model.completed","model.failed","tool.requested","tool.completed","tool.failed","approval.requested","approval.resolved","verification.recorded","context.compressed","route.decided"]) {
+          source.addEventListener(type, (message) => {
+            try {
+              const payload = JSON.parse(message.data);
+              for (const listener of listeners) listener({ state: mapState(payload), sourceType: payload.type, taskId: payload.taskId, textDelta: payload.type === "model.delta" ? payload.payload.text : undefined });
+            } catch { /* ignore */ }
+          });
+        }
+        return {
+          subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+          close() { source.close(); }
+        };
+      }
+
+      function mapState(event) {
+        switch (event.type) {
+          case "task.created": return "listening";
+          case "task.started":
+          case "session.started":
+          case "model.requested":
+          case "model.delta": return "thinking";
+          case "tool.requested": return "working";
+          case "approval.requested": return "waiting_approval";
+          case "verification.recorded": return "verifying";
+          case "context.compressed": return "thinking";
+          case "task.completed": return "success";
+          case "session.ended": return event.payload.status === "paused" ? "sleeping" : event.payload.status === "failed" ? "error" : "idle";
+          case "task.failed":
+          case "model.failed":
+          case "tool.failed": return "error";
+          case "task.paused": return "sleeping";
+          case "task.cancelled": return "idle";
+          default: return "working";
+        }
+      }
+
+      const params = new URLSearchParams(location.search);
+      const gateway = params.get("gateway") ?? "http://127.0.0.1:4317";
+      const transport = createSseTransport(`${gateway}/events`);
+      transport.subscribe(applyEvent);
+
+      // Local demo mode so the renderer is verifiable without a gateway.
+      if (params.get("demo") === "1") {
+        let index = 0;
+        const script = [
+          { state: "listening" },
+          { state: "thinking" },
+          { state: "thinking", textDelta: "读取文件…" },
+          { state: "working" },
+          { state: "waiting_approval" },
+          { state: "verifying" },
+          { state: "success", text: "完成" }
+        ];
+        setInterval(() => {
+          applyEvent({ ...script[index % script.length], sourceType: "demo", taskId: "demo-task" });
+          index += 1;
+        }, 1400);
+      }
+    </script>
+  </body>
+</html>

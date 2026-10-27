@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "references": [
+    { "path": "../../packages/protocol" },
+    { "path": "../../packages/task-ledger" },
+    { "path": "../../packages/tools" },
+    { "path": "../../packages/runner" },
+    { "path": "../../packages/routing" },
+    { "path": "../../packages/policy" },
+    { "path": "../../packages/verifier" },
+    { "path": "../../packages/memory" },
+    { "path": "../../packages/pet-adapter" },
+    { "path": "../../packages/sync" }
+  ],
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

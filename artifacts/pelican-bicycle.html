@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>鹈鹕骑自行车 · SVG 2D 动画</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      background: #10233d;
+      font-family: system-ui, sans-serif;
+    }
+    .scene {
+      width: min(960px, 100vw);
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      border: 2px solid #2e5c7d;
+      border-radius: 18px;
+      background: linear-gradient(#85c7e3 0 62%, #dbbb72 62% 100%);
+      box-shadow: 0 24px 60px #06101dcc;
+    }
+    svg { width: 100%; height: 100%; display: block; }
+    .sun { fill: #ffe9a6; opacity: .9; }
+    .cloud { fill: #f4fbff; opacity: .75; animation: drift 18s linear infinite; }
+    .cloud.two { animation-duration: 25s; animation-delay: -11s; opacity: .5; }
+    .road { fill: none; stroke: #fff0bd; stroke-width: 8; stroke-dasharray: 34 26; animation: road 1.2s linear infinite; }
+    .bike { transform-origin: 480px 420px; animation: ride 1.4s ease-in-out infinite; }
+    .wheel { fill: none; stroke: #243447; stroke-width: 8; }
+    .spokes { stroke: #547083; stroke-width: 2; transform-box: fill-box; transform-origin: center; animation: spin .8s linear infinite; }
+    .frame { fill: none; stroke: #d34e45; stroke-width: 8; stroke-linecap: round; stroke-linejoin: round; }
+    .pelican { transform-origin: 480px 300px; animation: pedal 1.4s ease-in-out infinite; }
+    .body { fill: #f2f5f2; stroke: #324b5c; stroke-width: 5; }
+    .wing { fill: #d4e0e3; stroke: #324b5c; stroke-width: 5; transform-origin: 470px 280px; animation: flap 1.4s ease-in-out infinite; }
+    .beak { fill: #f2a84b; stroke: #8d4d37; stroke-width: 4; }
+    .beak-tip { fill: #dc6548; }
+    .leg { fill: none; stroke: #d9773c; stroke-width: 8; stroke-linecap: round; animation: leg 1.4s linear infinite; }
+    .eye { fill: #172431; }
+    .label { fill: #17324b; font-size: 18px; font-weight: 700; letter-spacing: 1px; }
+    @keyframes drift { from { transform: translateX(-180px); } to { transform: translateX(980px); } }
+    @keyframes road { to { stroke-dashoffset: -60px; } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes ride { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+    @keyframes pedal { 0%,100% { transform: translateY(0) rotate(-1deg); } 50% { transform: translateY(-7px) rotate(1deg); } }
+    @keyframes flap { 0%,100% { transform: rotate(5deg); } 50% { transform: rotate(-9deg); } }
+    @keyframes leg { from { transform: rotate(18deg); } 50% { transform: rotate(-18deg); } to { transform: rotate(18deg); } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-play-state: paused !important; } }
+  </style>
+</head>
+<body>
+  <main class="scene" aria-label="一只鹈鹕骑自行车的 SVG 动画">
+    <svg viewBox="0 0 960 540" role="img">
+      <title>鹈鹕骑自行车</title>
+      <circle class="sun" cx="800" cy="105" r="55"/>
+      <g class="cloud" transform="translate(20 95)">
+        <ellipse cx="90" cy="25" rx="65" ry="22"/><circle cx="55" cy="12" r="27"/><circle cx="103" cy="5" r="35"/>
+      </g>
+      <g class="cloud two" transform="translate(390 155)">
+        <ellipse cx="90" cy="25" rx="65" ry="22"/><circle cx="55" cy="12" r="27"/><circle cx="103" cy="5" r="35"/>
+      </g>
+      <path class="road" d="M0 421 H960"/>
+      <g class="bike">
+        <circle class="wheel" cx="380" cy="410" r="72"/><circle class="wheel" cx="610" cy="410" r="72"/>
+        <g class="spokes" transform="translate(380 410)"><path d="M0-68V68M-68 0H68M-48-48L48 48M48-48L-48 48"/></g>
+        <g class="spokes" transform="translate(610 410)"><path d="M0-68V68M-68 0H68M-48-48L48 48M48-48L-48 48"/></g>
+        <path class="frame" d="M380 410 L458 340 L525 410 Z M458 340 L610 410 M458 340 L480 410 M525 410 L555 333"/>
+        <path class="frame" d="M540 333 H580 M555 333 L568 315"/>
+        <circle cx="480" cy="410" r="13" fill="#f0b14d" stroke="#813e38" stroke-width="4"/>
+        <path d="M480 410 L447 437 M480 410 L514 384" stroke="#813e38" stroke-width="5" stroke-linecap="round"/>
+      </g>
+      <g class="pelican">
+        <ellipse class="body" cx="480" cy="275" rx="75" ry="68"/>
+        <path class="wing" d="M462 260 Q420 278 432 327 Q466 309 485 280Z"/>
+        <circle class="body" cx="535" cy="220" r="48"/>
+        <path class="beak" d="M560 216 Q650 210 677 240 Q630 269 557 242Z"/>
+        <path class="beak-tip" d="M650 228 Q671 232 677 240 Q666 251 650 253Z"/>
+        <circle class="eye" cx="550" cy="207" r="6"/>
+        <path class="leg" d="M460 327 L477 382"/><path class="leg" d="M503 329 L488 382"/>
+        <path d="M455 383 Q477 395 493 382" fill="none" stroke="#d9773c" stroke-width="7" stroke-linecap="round"/>
+        <path d="M460 172 Q475 149 494 165" fill="none" stroke="#324b5c" stroke-width="5" stroke-linecap="round"/>
+      </g>
+      <text class="label" x="34" y="48">PELican express · SVG 2D</text>
+    </svg>
+  </main>
+</body>
+</html>

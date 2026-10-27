@@ -1,0 +1,20 @@
+{
+  "name": "@agent/benchmark-runner",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "agent-benchmark": "./dist/main.js"
+  },
+  "scripts": {
+    "start": "node dist/main.js",
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty false"
+  },
+  "dependencies": {
+    "@agent/benchmark": "workspace:*",
+    "@agent/protocol": "workspace:*",
+    "@agent/runtime": "workspace:*",
+    "@agent/runner": "workspace:*"
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "packages/protocol"
+    },
+    {
+      "path": "packages/task-ledger"
+    },
+    {
+      "path": "packages/tools"
+    },
+    {
+      "path": "packages/runner"
+    },
+    {
+      "path": "packages/routing"
+    },
+    {
+      "path": "packages/policy"
+    },
+    {
+      "path": "packages/verifier"
+    },
+    {
+      "path": "packages/memory"
+    },
+    {
+      "path": "packages/pet-adapter"
+    },
+    {
+      "path": "packages/sync"
+    },
+    {
+      "path": "packages/benchmark"
+    },
+    {
+      "path": "apps/runtime"
+    },
+    {
+      "path": "apps/gateway"
+    },
+    {
+      "path": "apps/cli"
+    },
+    {
+      "path": "apps/jev-service"
+    },
+    {
+      "path": "apps/sync-service"
+    },
+    {
+      "path": "apps/benchmark-runner"
+    },
+    {
+      "path": "apps/desktop-pet"
+    }
+  ]
+}

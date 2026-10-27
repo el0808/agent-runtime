@@ -1,0 +1,127 @@
+{
+  "generatedAt": "2026-10-27T17:46:14.138Z",
+  "seed": 20261027,
+  "repetitions": 1,
+  "datasetSize": 50,
+  "mode": "runtime",
+  "metrics": [
+    {
+      "config": "A-strong-baseline",
+      "label": "no harness, no recovery",
+      "taskCount": 50,
+      "successRate": 0.4,
+      "averageCostUsd": 0,
+      "averageTokens": 4,
+      "averageLatencyMs": 1.3667524200000005,
+      "recoverySuccessRate": 0.4,
+      "resumeSuccessRate": 0.4,
+      "highRiskUnauthorized": 0,
+      "averageRollbackResidual": 0.6,
+      "compressionReduction": 0,
+      "successRateCi95": [
+        0.2760818978624575,
+        0.5381881089724063
+      ]
+    },
+    {
+      "config": "B-fast-baseline",
+      "label": "no harness, no verification",
+      "taskCount": 50,
+      "successRate": 0.4,
+      "averageCostUsd": 0,
+      "averageTokens": 4,
+      "averageLatencyMs": 1.1214225400000044,
+      "recoverySuccessRate": 0.4,
+      "resumeSuccessRate": 0.4,
+      "highRiskUnauthorized": 0,
+      "averageRollbackResidual": 0.6,
+      "compressionReduction": 0,
+      "successRateCi95": [
+        0.2760818978624575,
+        0.5381881089724063
+      ]
+    },
+    {
+      "config": "C-runtime-no-jev",
+      "label": "runtime, no verifier, no recovery",
+      "taskCount": 50,
+      "successRate": 0.4,
+      "averageCostUsd": 0,
+      "averageTokens": 4,
+      "averageLatencyMs": 1.0928616399999997,
+      "recoverySuccessRate": 0.4,
+      "resumeSuccessRate": 0.4,
+      "highRiskUnauthorized": 0,
+      "averageRollbackResidual": 0.6,
+      "compressionReduction": 0,
+      "successRateCi95": [
+        0.2760818978624575,
+        0.5381881089724063
+      ]
+    },
+    {
+      "config": "D-runtime-jev",
+      "label": "runtime + jev routing",
+      "taskCount": 50,
+      "successRate": 0.4,
+      "averageCostUsd": 0,
+      "averageTokens": 4,
+      "averageLatencyMs": 1.0884408799999892,
+      "recoverySuccessRate": 0.4,
+      "resumeSuccessRate": 0.4,
+      "highRiskUnauthorized": 0,
+      "averageRollbackResidual": 0.6,
+      "compressionReduction": 0,
+      "successRateCi95": [
+        0.2760818978624575,
+        0.5381881089724063
+      ]
+    },
+    {
+      "config": "E-runtime-jev-verifier",
+      "label": "runtime + jev + verifier",
+      "taskCount": 50,
+      "successRate": 0.4,
+      "averageCostUsd": 0,
+      "averageTokens": 4,
+      "averageLatencyMs": 1.2625150000000007,
+      "recoverySuccessRate": 0.4,
+      "resumeSuccessRate": 0.4,
+      "highRiskUnauthorized": 0,
+      "averageRollbackResidual": 0.6,
+      "compressionReduction": 0,
+      "successRateCi95": [
+        0.2760818978624575,
+        0.5381881089724063
+      ]
+    },
+    {
+      "config": "F-runtime-jev-verifier-recovery",
+      "label": "runtime + jev + verifier + recovery",
+      "taskCount": 50,
+      "successRate": 1,
+      "averageCostUsd": 0,
+      "averageTokens": 10,
+      "averageLatencyMs": 3.1915341400000057,
+      "recoverySuccessRate": 1,
+      "resumeSuccessRate": 1,
+      "highRiskUnauthorized": 0,
+      "averageRollbackResidual": 0,
+      "compressionReduction": 0,
+      "successRateCi95": [
+        0.9286499658256813,
+        1
+      ]
+    }
+  ],
+  "targets": {
+    "successRateVsStrongBaseline": 0.6,
+    "costReductionVsStrongBaseline": 0,
+    "latencyReductionVsStrongBaseline": -1.3351223625417137,
+    "recoverySuccessRate": 1,
+    "resumeSuccessRate": 1,
+    "maxHighRiskUnauthorized": 0,
+    "maxRollbackResidual": 0.6,
+    "compressionReduction": 0
+  }
+}

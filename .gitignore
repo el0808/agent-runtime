@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+.pnpm-store/
+.DS_Store
+*.log
+*.tsbuildinfo
+
+storage/runtime.db
+storage/runtime.db-*
+storage/artifacts/*
+storage/checkpoints/*
+!storage/artifacts/.gitkeep
+!storage/checkpoints/.gitkeep

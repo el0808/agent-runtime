@@ -1,0 +1,31 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "references": [
+    {
+      "path": "../protocol"
+    },
+    {
+      "path": "../task-ledger"
+    },
+    {
+      "path": "../runner"
+    },
+    {
+      "path": "../tools"
+    },
+    {
+      "path": "../verifier"
+    }
+  ],
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "src/**/*.test.ts"
+  ]
+}
