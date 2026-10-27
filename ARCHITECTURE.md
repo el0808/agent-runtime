@@ -36,3 +36,12 @@ storage/               local runtime data and generated artifacts
 - Logs are JSON-serializable records with an ISO-8601 timestamp, level, event name, and message.
 - Root scripts provide one command each for build, lint, type checking, and tests.
 - CI runs the same commands used locally.
+
+## Phase 1 contracts
+
+- `@agent/protocol` owns the discriminated `RuntimeEvent` union and the task, runner, checkpoint, tool, and verification types.
+- `@agent/task-ledger` stores tasks, append-only events, and checkpoint snapshots in SQLite.
+- The event stream is the source of truth for replay. The task row stores the latest state as a read snapshot.
+- Every mutating ledger operation uses `BEGIN IMMEDIATE`, validates the state transition, writes the event, and updates the snapshot before commit.
+- `eventId` is the idempotency key. Repeating the same event returns the stored event; reusing it with different task, type, or payload fails.
+- Checkpoint restoration appends a `checkpoint.restored` event, so recovery remains visible and replayable.

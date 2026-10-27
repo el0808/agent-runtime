@@ -49,7 +49,11 @@ importers:
 
   packages/sync: {}
 
-  packages/task-ledger: {}
+  packages/task-ledger:
+    dependencies:
+      '@agent/protocol':
+        specifier: workspace:*
+        version: link:../protocol
 
   packages/tools: {}
 

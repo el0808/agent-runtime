@@ -367,13 +367,13 @@ F. 你的 Runtime + Jev + Verifier + Recovery
 
 ### Phase 1：协议和事件账本
 
-- [ ] 定义 `RuntimeEvent`；
-- [ ] 定义 `TaskProfile`；
-- [ ] 定义 `Runner` 接口；
-- [ ] 定义 `ToolCall`、`Checkpoint`、`VerificationResult`；
-- [ ] 实现 SQLite 事件表；
-- [ ] 实现任务状态机；
-- [ ] 实现事件回放。
+- [x] 定义 `RuntimeEvent`；
+- [x] 定义 `TaskProfile`；
+- [x] 定义 `Runner` 接口；
+- [x] 定义 `ToolCall`、`Checkpoint`、`VerificationResult`；
+- [x] 实现 SQLite 事件表；
+- [x] 实现任务状态机；
+- [x] 实现事件回放。
 
 验收：进程重启后可以读取任务状态和完整事件。
 

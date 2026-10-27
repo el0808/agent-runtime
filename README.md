@@ -2,7 +2,7 @@
 
 本项目是一个本地优先、可验证、可恢复的 Agent Runtime + Harness，目标是让长任务具备明确的状态、权限、检查点、验证和恢复能力，并为 Electron + Live2D 桌宠提供稳定的展示层接口。
 
-当前处于 **Phase 0：项目初始化**。此阶段只建立可运行的 TypeScript + Node.js Monorepo、共享协议、开发工具链、架构边界和 CI；Runner、模型调用、SQLite 账本、记忆、同步和桌宠接入将在后续 Phase 实现。
+当前已完成 **Phase 0：项目初始化** 和 **Phase 1：协议和任务账本**。Runner 的实际执行、模型调用、记忆、同步和桌宠接入将在后续 Phase 实现。
 
 ## 目标
 
@@ -22,6 +22,14 @@
 - 架构、进度和决策记录。
 - GitHub Actions CI：安装、lint、类型检查、测试和构建。
 
+已完成 Phase 1：
+
+- `@agent/protocol` 定义 `RuntimeEvent`、`TaskProfile`、`RunnerType`、`Checkpoint`、`VerificationResult` 和 `Runner`。
+- `@agent/task-ledger` 使用 Node.js 内置 `node:sqlite` 持久化任务、事件和检查点。
+- 事件追加使用 `eventId` 幂等；状态变化在 `BEGIN IMMEDIATE` 事务内校验和写入。
+- 任务状态可以从完整事件流回放；进程重启后可以继续读取任务、事件和检查点。
+- 非法状态转换会被拒绝并回滚，不接入 LLM、Jev、实际 Runner、Memory、Verifier、Electron 或同步系统。
+
 ## 目录结构
 
 ```text
@@ -33,7 +41,7 @@ apps/
 
 packages/
   protocol/         共享事件、错误码和日志类型
-  task-ledger/      任务状态、事件日志和检查点
+  task-ledger/      SQLite 任务状态、事件日志和检查点
   runner/           Runner 接口和实现
   policy/           权限、审批和安全规则
   tools/            工具注册和执行
@@ -52,7 +60,7 @@ storage/
 
 ## 开始开发
 
-要求：Node.js 24+、pnpm 11.25.0。
+要求：Node.js 24+、pnpm 11.25.0。账本使用 Node.js 24 内置的 `node:sqlite`，不需要额外原生 SQLite 依赖。
 
 ```bash
 pnpm install --frozen-lockfile
