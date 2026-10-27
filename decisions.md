@@ -56,3 +56,10 @@
 - 编辑采用 expectedVersion 乐观并发控制，版本过期直接返回冲突；用户可以搜索、更新、删除、恢复历史版本和标记冲突已解决。
 - ContextCompressor 默认使用确定性摘要，保留约束句和最近上下文；原始消息完整保留，压缩结果记录 token 估算、减少比例和质量检查。
 - 记忆修改和压缩仅在提供 taskId/ledger 时写入 RuntimeEvent，避免全局记忆强行绑定到不存在的任务，同时保证任务范围动作可回放。
+
+## 2026-10-27 — Phase 7
+
+- 桌宠只实现 `PetAdapter` 展示协议，RuntimeEvent 经过 mapper 映射成有限状态；桌宠进程不能访问 Provider、ToolRegistry 或审批 API。
+- FakePetAdapter 是默认离线测试实现；Live2DPetAdapter 只依赖可替换 transport，ElectronPetAdapter 通过固定 IPC channel 发送事件，便于接入 Open Yachiyo 而不把它变成核心依赖。
+- 流式模型增量直接转成 textDelta，语音和口型同步通过 VoiceAdapter 注入；适配器只转发，不推断任务完成。
+- 断线时事件按顺序进入内存队列，连接恢复后 flush；重连失败会按退避间隔继续尝试，任务状态仍由 SQLite 账本独立保存。

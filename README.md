@@ -59,6 +59,11 @@
 - `@agent/memory` 提供 SQLite 多级记忆、来源/置信度/版本/过期时间、搜索编辑删除、历史恢复和冲突处理。
 - `ContextCompressor` 主动生成摘要并保留原始消息，验证关键约束，记录压缩前后 token 和 `context.compressed` 事件。
 
+已完成 Phase 7：
+
+- `@agent/pet-adapter` 定义九种桌宠状态和 RuntimeEvent 映射，支持流式气泡与可注入语音/口型接口。
+- 提供 FakePetAdapter、Live2DPetAdapter 和 Electron IPC 适配器；断线事件排队并自动重连，桌宠不直接调用 LLM。
+
 ## 目录结构
 
 ```text

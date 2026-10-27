@@ -157,3 +157,24 @@ Phase 5 限制：Jev 目前是注入式 transport，未连接真实服务；成�
 - 压缩结果保留原始消息数组，摘要前后 token、减少比例、保留约束和质量状态可读取，并写入 RuntimeEvent。
 
 Phase 6 限制：当前搜索是 SQLite 文本匹配，不依赖外部向量服务；摘要器默认确定性规则，可注入模型摘要器，压缩成功率和 token 统计将在 Phase 9 Benchmark 量化。
+
+## Phase 7 — 2D 桌宠适配器
+
+| Step | 状态 | 验证 | 记录 |
+|---|---|---|---|
+| 7.1 PetAdapter 和状态机 | 完成 | idle/listening/thinking/working/waiting_approval/verifying/success/error/sleeping 状态 | 2026-10-27 |
+| 7.2 RuntimeEvent 映射和气泡 | 完成 | RuntimeEvent 映射到 FakePetAdapter，model.delta 产生流式气泡和语音调用 | 2026-10-27 |
+| 7.3 Live2D/Electron 边界 | 完成 | Live2D transport、Electron IPC channel、FakePetAdapter 离线路径 | 2026-10-27 |
+| 7.4 重连与验收 | 完成 | 断线排队、重连刷新、30 个测试通过 | 2026-10-27 |
+
+### Phase 7 验证记录
+
+- `pnpm typecheck`：通过。
+- `pnpm lint`：通过。
+- `pnpm test`：通过，11 个测试文件、30 个测试。
+- `pnpm build`：通过。
+- PetAdapter 只接收已产生的 RuntimeEvent，不拥有 Provider、ToolRegistry 或 LLM 调用权限。
+- Live2D 和 Electron 均通过 transport/IPC 接口隔离；不可用时 FakePetAdapter 可运行离线测试。
+- 断线期间事件保存在适配器队列，恢复后按顺序发送，响应延迟可由事件时间戳测量。
+
+Phase 7 限制：当前没有打包真实 Live2D 模型和 Open Yachiyo 资源，Electron 层只提供 IPC 适配边界；语音实现为可注入接口，授权和真实模型资源在发布前单独审查。

@@ -8,6 +8,7 @@
     { "path": "packages/routing" },
     { "path": "packages/policy" },
     { "path": "packages/verifier" }
-    ,{ "path": "packages/memory" }
+    ,{ "path": "packages/memory" },
+    { "path": "packages/pet-adapter" }
   ]
 }

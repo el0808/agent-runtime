@@ -440,14 +440,14 @@ F. 你的 Runtime + Jev + Verifier + Recovery
 
 ### Phase 7：桌宠接入
 
-- [ ] 建立 `PetAdapter`；
-- [ ] 定义桌宠状态机；
-- [ ] 接入 Open Yachiyo 的 Electron/Live2D 展示层；
-- [ ] 映射思考、执行、审批、成功、失败、睡眠状态；
-- [ ] 接入流式气泡；
-- [ ] 接入语音和口型同步；
-- [ ] 实现断线重连；
-- [ ] 桌宠不直接调用 LLM。
+- [x] 建立 `PetAdapter`；
+- [x] 定义桌宠状态机；
+- [x] 接入 Open Yachiyo 的 Electron/Live2D 展示层；
+- [x] 映射思考、执行、审批、成功、失败、睡眠状态；
+- [x] 接入流式气泡；
+- [x] 接入语音和口型同步；
+- [x] 实现断线重连；
+- [x] 桌宠不直接调用 LLM。
 
 验收：Runtime 事件能稳定驱动桌宠状态，桌宠重启不影响任务。
 
