@@ -9,3 +9,4 @@
 - `progress.md` 和 `decisions.md` 原本缺失，初始化时创建并持续更新。
 - pnpm 11 默认阻止依赖构建脚本；Vitest 依赖的 `esbuild` 需要构建，因此在 `pnpm-workspace.yaml` 仅允许 `esbuild`，不开放全部依赖脚本。
 - CI 使用 Node 24 和固定 pnpm 11.25.0，执行与本地相同的五项验证命令。
+- README 以中文写明项目边界、当前 Phase、目录、启动命令、文档入口和路线图，避免把未实现的后续能力误认为已完成。

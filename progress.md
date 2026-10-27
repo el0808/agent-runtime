@@ -7,6 +7,7 @@
 | 0.1 仓库与目录骨架 | 完成 | Git 初始化、workspace 配置和目录检查通过 | 2026-10-27 |
 | 0.2 协议包与统一错误/日志格式 | 完成 | `pnpm install`、`pnpm lint`、`pnpm typecheck`、`pnpm test`（2/2）、`pnpm build` 通过 | 2026-10-27 |
 | 0.3 CI 与最终验收 | 完成 | frozen install、lint、typecheck、test（2/2）、build、diff check 全部通过 | 2026-10-27 |
+| 0.4 README | 完成 | 项目目标、状态、结构、开发命令、文档和路线图已写明 | 2026-10-27 |
 
 阻塞：无。
 
