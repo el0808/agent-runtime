@@ -2,6 +2,8 @@
   "files": [],
   "references": [
     { "path": "packages/protocol" },
-    { "path": "packages/task-ledger" }
+    { "path": "packages/task-ledger" },
+    { "path": "packages/tools" },
+    { "path": "packages/runner" }
   ]
 }

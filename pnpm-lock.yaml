@@ -45,7 +45,17 @@ importers:
 
   packages/routing: {}
 
-  packages/runner: {}
+  packages/runner:
+    dependencies:
+      '@agent/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@agent/task-ledger':
+        specifier: workspace:*
+        version: link:../task-ledger
+      '@agent/tools':
+        specifier: workspace:*
+        version: link:../tools
 
   packages/sync: {}
 
@@ -55,7 +65,11 @@ importers:
         specifier: workspace:*
         version: link:../protocol
 
-  packages/tools: {}
+  packages/tools:
+    dependencies:
+      '@agent/protocol':
+        specifier: workspace:*
+        version: link:../protocol
 
   packages/verifier: {}
 

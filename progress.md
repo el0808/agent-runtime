@@ -52,3 +52,25 @@ Phase 1 阻塞：无。
 - 检查点：失败任务恢复为检查点保存的运行状态，并追加恢复事件。
 - 非法转换：事务回滚，事件数量和任务状态保持不变。
 - LLM、Jev、实际 Runner、Memory、Verifier、Electron、同步系统：未接入。
+
+## Phase 2 — Agent Core
+
+| Step | 状态 | 验证 | 记录 |
+|---|---|---|---|
+| 2.1 Provider 与 FakeProvider | 完成 | `ModelProvider`、流式事件、可取消 FakeProvider 和模型事件测试 | 2026-10-27 |
+| 2.2 ToolRegistry 与安全内置工具 | 完成 | 注册、重复注册、超时、取消、文件读写、工作区路径限制测试 | 2026-10-27 |
+| 2.3 ReAct Runner | 完成 | 两轮工具调用、模型增量输出、任务/会话隔离和事件记录测试 | 2026-10-27 |
+| 2.4 Phase 2 验收 | 完成 | lint、typecheck、test（15/15）、build 全部通过 | 2026-10-27 |
+
+### Phase 2 验证记录
+
+- `pnpm lint`：通过。
+- `pnpm typecheck`：通过。
+- `pnpm test`：通过，5 个测试文件、15 个测试。
+- `pnpm build`：通过。
+- 模型请求、增量输出、完成和失败会写入 `RuntimeEvent`；工具请求、成功、失败、超时和取消同样写入事件。
+- `FakeProvider` 不依赖真实 API，测试中验证流式增量、工具调用和 AbortSignal。
+- `ToolRegistry` 用 AbortSignal 和超时定时器隔离工具异常；内置 `read_file`、`write_file`、`run_tests` 受 workspace 根目录和固定命令限制。
+- ReAct Runner 每个任务使用独立 session、消息列表和取消控制器，任务状态可由事件回放重建。
+
+Phase 2 限制：真实模型 Provider、重试策略、权限审批和回滚属于后续 Phase；当前仅提供可替换接口和离线 FakeProvider。桌面、Jev、Memory、Verifier、同步系统仍未接入。

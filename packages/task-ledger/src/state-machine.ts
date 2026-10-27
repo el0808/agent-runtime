@@ -8,7 +8,8 @@ import type {
   RuntimeEvent,
   TaskState,
   TaskStatus,
-  TaskProfile
+  TaskProfile,
+  ToolCall
 } from "@agent/protocol";
 
 function invalidTransition(taskId: string, status: TaskStatus, eventType: string): never {
@@ -49,12 +50,39 @@ function baseNextState(state: TaskState, event: RuntimeEvent): TaskState {
   return { ...state, lastEventSequence: event.sequence };
 }
 
+function updateToolCall(
+  state: TaskState,
+  callId: string,
+  update: (call: ToolCall) => ToolCall
+): TaskState {
+  const index = state.toolCalls.findIndex((call) => call.callId === callId);
+  if (index < 0) {
+    throw new RuntimeError({
+      code: ERROR_CODES.CORRUPT_LEDGER,
+      message: `Tool call ${callId} was not found`,
+      details: { taskId: state.taskId, callId }
+    });
+  }
+  const toolCalls = [...state.toolCalls];
+  const current = toolCalls[index];
+  if (current === undefined) {
+    throw new RuntimeError({
+      code: ERROR_CODES.CORRUPT_LEDGER,
+      message: `Tool call ${callId} was not found`,
+      details: { taskId: state.taskId, callId }
+    });
+  }
+  toolCalls[index] = update(current);
+  return { ...state, toolCalls };
+}
+
 export function createInitialTaskState(profile: TaskProfile): TaskState {
   return {
     taskId: profile.taskId,
     status: TASK_STATUSES.PENDING,
     profile,
     completedSteps: [],
+    toolCalls: [],
     lastEventSequence: 0
   };
 }
@@ -91,6 +119,73 @@ export function applyRuntimeEvent(
   const next = baseNextState(state, event);
 
   switch (event.type) {
+    case RUNTIME_EVENT_TYPES.SESSION_STARTED:
+    case RUNTIME_EVENT_TYPES.SESSION_ENDED:
+    case RUNTIME_EVENT_TYPES.MODEL_REQUESTED:
+    case RUNTIME_EVENT_TYPES.MODEL_DELTA:
+    case RUNTIME_EVENT_TYPES.MODEL_COMPLETED:
+    case RUNTIME_EVENT_TYPES.MODEL_FAILED:
+      return next;
+
+    case RUNTIME_EVENT_TYPES.TOOL_REQUESTED:
+      if (state.status === TASK_STATUSES.COMPLETED || state.status === TASK_STATUSES.CANCELLED) {
+        invalidTransition(state.taskId, state.status, event.type);
+      }
+      if (state.toolCalls.some((call) => call.callId === event.payload.call.callId)) {
+        throw new RuntimeError({
+          code: ERROR_CODES.CORRUPT_LEDGER,
+          message: `Tool call ${event.payload.call.callId} was already requested`,
+          details: { taskId: state.taskId, callId: event.payload.call.callId }
+        });
+      }
+      return { ...next, toolCalls: [...state.toolCalls, event.payload.call] };
+
+    case RUNTIME_EVENT_TYPES.TOOL_COMPLETED:
+      return updateToolCall(next, event.payload.callId, (call) => {
+        const completed: ToolCall = {
+          ...call,
+          status: "succeeded",
+          output: event.payload.output,
+          completedAt: event.payload.completedAt
+        };
+        delete completed.error;
+        return completed;
+      });
+
+    case RUNTIME_EVENT_TYPES.TOOL_FAILED:
+      return updateToolCall(next, event.payload.callId, (call) => {
+        const failed: ToolCall = {
+          ...call,
+          status: "failed",
+          error: event.payload.error,
+          completedAt: event.payload.completedAt
+        };
+        delete failed.output;
+        return failed;
+      });
+
+    case RUNTIME_EVENT_TYPES.TOOL_TIMED_OUT:
+      return updateToolCall(next, event.payload.callId, (call) => {
+        const timedOut: ToolCall = {
+          ...call,
+          status: "timed_out",
+          completedAt: event.payload.completedAt
+        };
+        delete timedOut.output;
+        return timedOut;
+      });
+
+    case RUNTIME_EVENT_TYPES.TOOL_CANCELLED:
+      return updateToolCall(next, event.payload.callId, (call) => {
+        const cancelled: ToolCall = {
+          ...call,
+          status: "cancelled",
+          completedAt: event.payload.completedAt
+        };
+        delete cancelled.output;
+        return cancelled;
+      });
+
     case RUNTIME_EVENT_TYPES.TASK_STARTED:
       if (state.status !== TASK_STATUSES.PENDING) {
         invalidTransition(state.taskId, state.status, event.type);

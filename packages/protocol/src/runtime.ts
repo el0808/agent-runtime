@@ -60,7 +60,7 @@ export interface ToolCall {
   callId: string;
   toolName: string;
   input: JsonObject;
-  status: "requested" | "succeeded" | "failed" | "cancelled";
+  status: "requested" | "succeeded" | "failed" | "timed_out" | "cancelled";
   startedAt?: string;
   completedAt?: string;
   output?: JsonValue;
@@ -72,6 +72,7 @@ export interface TaskStateSnapshot {
   status: TaskStatus;
   profile: TaskProfile;
   completedSteps: readonly string[];
+  toolCalls: readonly ToolCall[];
   currentStep?: string;
   lastEventSequence: number;
   lastCheckpointId?: string;
@@ -100,7 +101,18 @@ export const RUNTIME_EVENT_TYPES = {
   TASK_CANCELLED: "task.cancelled",
   CHECKPOINT_CREATED: "checkpoint.created",
   CHECKPOINT_RESTORED: "checkpoint.restored",
-  VERIFICATION_RECORDED: "verification.recorded"
+  VERIFICATION_RECORDED: "verification.recorded",
+  SESSION_STARTED: "session.started",
+  SESSION_ENDED: "session.ended",
+  MODEL_REQUESTED: "model.requested",
+  MODEL_DELTA: "model.delta",
+  MODEL_COMPLETED: "model.completed",
+  MODEL_FAILED: "model.failed",
+  TOOL_REQUESTED: "tool.requested",
+  TOOL_COMPLETED: "tool.completed",
+  TOOL_FAILED: "tool.failed",
+  TOOL_TIMED_OUT: "tool.timed_out",
+  TOOL_CANCELLED: "tool.cancelled"
 } as const;
 
 export type RuntimeEventType = (typeof RUNTIME_EVENT_TYPES)[keyof typeof RUNTIME_EVENT_TYPES];
@@ -147,6 +159,80 @@ export interface VerificationRecordedPayload {
   result: VerificationResult;
 }
 
+export interface SessionStartedPayload {
+  sessionId: string;
+}
+
+export interface SessionEndedPayload {
+  sessionId: string;
+  status: "completed" | "failed" | "cancelled" | "paused";
+}
+
+export interface ModelRequestedPayload {
+  sessionId: string;
+  requestId: string;
+  provider: string;
+  model: string;
+  turn: number;
+  messageCount: number;
+}
+
+export interface ModelDeltaPayload {
+  sessionId: string;
+  requestId: string;
+  text: string;
+}
+
+export interface ModelCompletedPayload {
+  sessionId: string;
+  requestId: string;
+  text: string;
+  finishReason: "stop" | "tool_call" | "length";
+}
+
+export interface ModelFailedPayload {
+  sessionId: string;
+  requestId: string;
+  error: TaskFailure;
+}
+
+export interface ToolRequestedPayload {
+  sessionId: string;
+  call: ToolCall;
+}
+
+export interface ToolCompletedPayload {
+  sessionId: string;
+  callId: string;
+  output: JsonValue;
+  completedAt: string;
+  durationMs: number;
+}
+
+export interface ToolFailedPayload {
+  sessionId: string;
+  callId: string;
+  error: TaskFailure;
+  completedAt: string;
+  durationMs: number;
+}
+
+export interface ToolTimedOutPayload {
+  sessionId: string;
+  callId: string;
+  timeoutMs: number;
+  completedAt: string;
+  durationMs: number;
+}
+
+export interface ToolCancelledPayload {
+  sessionId: string;
+  callId: string;
+  reason: string;
+  completedAt: string;
+  durationMs: number;
+}
+
 export interface RuntimeEventBase<T extends RuntimeEventType, P> {
   eventId: string;
   taskId: string;
@@ -167,6 +253,17 @@ export interface RuntimeEventByType {
   "checkpoint.created": RuntimeEventBase<"checkpoint.created", CheckpointCreatedPayload>;
   "checkpoint.restored": RuntimeEventBase<"checkpoint.restored", CheckpointRestoredPayload>;
   "verification.recorded": RuntimeEventBase<"verification.recorded", VerificationRecordedPayload>;
+  "session.started": RuntimeEventBase<"session.started", SessionStartedPayload>;
+  "session.ended": RuntimeEventBase<"session.ended", SessionEndedPayload>;
+  "model.requested": RuntimeEventBase<"model.requested", ModelRequestedPayload>;
+  "model.delta": RuntimeEventBase<"model.delta", ModelDeltaPayload>;
+  "model.completed": RuntimeEventBase<"model.completed", ModelCompletedPayload>;
+  "model.failed": RuntimeEventBase<"model.failed", ModelFailedPayload>;
+  "tool.requested": RuntimeEventBase<"tool.requested", ToolRequestedPayload>;
+  "tool.completed": RuntimeEventBase<"tool.completed", ToolCompletedPayload>;
+  "tool.failed": RuntimeEventBase<"tool.failed", ToolFailedPayload>;
+  "tool.timed_out": RuntimeEventBase<"tool.timed_out", ToolTimedOutPayload>;
+  "tool.cancelled": RuntimeEventBase<"tool.cancelled", ToolCancelledPayload>;
 }
 
 export type RuntimeEvent<T extends RuntimeEventType = RuntimeEventType> = {

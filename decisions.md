@@ -19,3 +19,11 @@
 - 每次账本变更使用 `BEGIN IMMEDIATE`，状态校验、事件写入、检查点写入和任务快照更新一起提交；非法转换会完整回滚。
 - 检查点保存事件序号和任务状态快照；恢复通过追加 `checkpoint.restored` 事件完成，因此恢复动作可回放、可审计。
 - `completed` 和 `cancelled` 是终止状态；失败任务可通过 `task.resumed` 或检查点恢复重新进入 `running`。
+
+## 2026-10-27 — Phase 2
+
+- Provider 采用 `ModelProvider.chat(request, signal)` 的异步流接口，统一产生 `delta`、`tool_call` 和 `completed` 事件；真实厂商适配器留在接口之外，当前用 `FakeProvider` 做离线验证。
+- 模型、工具和 session 过程全部写入 `RuntimeEvent`，TaskLedger 快照只保留可回放的工具调用状态；消息历史保存在单次 Runner 会话内，避免任务间串状态。
+- `ToolRegistry` 以名称注册定义和输入校验，执行结果统一分为 succeeded、failed、timed_out、cancelled；工具收到独立 AbortSignal，超时或取消不会把异常传播到进程级。
+- 内置工具限定为工作区内 UTF-8 文件读写和固定的 `pnpm test`，路径越界直接拒绝，避免 Phase 2 引入任意 shell 执行权限。
+- ReAct Runner 使用工具调用后追加 tool message，再请求下一轮模型；达到最大轮数会记录失败事件。暂停和取消由 Runner 控制器触发，恢复通过追加 `task.resumed` 后重新运行。

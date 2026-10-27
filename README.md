@@ -2,7 +2,7 @@
 
 本项目是一个本地优先、可验证、可恢复的 Agent Runtime + Harness，目标是让长任务具备明确的状态、权限、检查点、验证和恢复能力，并为 Electron + Live2D 桌宠提供稳定的展示层接口。
 
-当前已完成 **Phase 0：项目初始化** 和 **Phase 1：协议和任务账本**。Runner 的实际执行、模型调用、记忆、同步和桌宠接入将在后续 Phase 实现。
+当前已完成 **Phase 0：项目初始化**、**Phase 1：协议和任务账本** 和 **Phase 2：Agent Core**。真实模型、复杂 Runner、安全恢复、记忆、同步和桌宠接入仍按路线图逐步实现。
 
 ## 目标
 
@@ -29,6 +29,12 @@
 - 事件追加使用 `eventId` 幂等；状态变化在 `BEGIN IMMEDIATE` 事务内校验和写入。
 - 任务状态可以从完整事件流回放；进程重启后可以继续读取任务、事件和检查点。
 - 非法状态转换会被拒绝并回滚，不接入 LLM、Jev、实际 Runner、Memory、Verifier、Electron 或同步系统。
+
+已完成 Phase 2：
+
+- `@agent/runner` 提供可替换的 `ModelProvider`、`FakeProvider` 和最小 ReAct Runner。
+- `@agent/tools` 提供 ToolRegistry、AbortSignal 超时/取消，以及受工作区限制的文件读写和固定测试工具。
+- 模型增量、工具调用、失败、超时、取消和 session 生命周期均写入 RuntimeEvent；每个任务使用独立 session 和消息历史。
 
 ## 目录结构
 
