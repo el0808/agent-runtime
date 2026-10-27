@@ -10,5 +10,6 @@
     { "path": "packages/verifier" }
     ,{ "path": "packages/memory" },
     { "path": "packages/pet-adapter" }
+    ,{ "path": "packages/sync" }
   ]
 }

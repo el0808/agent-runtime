@@ -44,7 +44,11 @@ importers:
         specifier: workspace:*
         version: link:../task-ledger
 
-  packages/pet-adapter: {}
+  packages/pet-adapter:
+    dependencies:
+      '@agent/protocol':
+        specifier: workspace:*
+        version: link:../protocol
 
   packages/policy:
     dependencies:
@@ -87,7 +91,14 @@ importers:
         specifier: workspace:*
         version: link:../tools
 
-  packages/sync: {}
+  packages/sync:
+    dependencies:
+      '@agent/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@agent/task-ledger':
+        specifier: workspace:*
+        version: link:../task-ledger
 
   packages/task-ledger:
     dependencies:

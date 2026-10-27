@@ -64,6 +64,15 @@
 - `@agent/pet-adapter` 定义九种桌宠状态和 RuntimeEvent 映射，支持流式气泡与可注入语音/口型接口。
 - 提供 FakePetAdapter、Live2DPetAdapter 和 Electron IPC 适配器；断线事件排队并自动重连，桌宠不直接调用 LLM。
 
+已完成 Phase 8：
+
+- `@agent/sync` 提供设备身份、本地 JSON 导出/导入、cursor、version、idempotencyKey 和冲突检测。
+- `LedgerSyncAdapter` 可同步任务事件、工具/验证结果和 checkpoint，并在另一份 TaskLedger 上幂等恢复。
+
+附加示例：
+
+- [pelican-bicycle.html](./artifacts/pelican-bicycle.html)：独立 SVG 鹈鹕骑自行车 2D 动画。
+
 ## 目录结构
 
 ```text

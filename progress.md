@@ -178,3 +178,31 @@ Phase 6 限制：当前搜索是 SQLite 文本匹配，不依赖外部向量服�
 - 断线期间事件保存在适配器队列，恢复后按顺序发送，响应延迟可由事件时间戳测量。
 
 Phase 7 限制：当前没有打包真实 Live2D 模型和 Open Yachiyo 资源，Electron 层只提供 IPC 适配边界；语音实现为可注入接口，授权和真实模型资源在发布前单独审查。
+
+## 插入任务 — SVG 鹈鹕骑自行车动画
+
+| Step | 状态 | 验证 | 记录 |
+|---|---|---|---|
+| A.1 独立 HTML | 完成 | `artifacts/pelican-bicycle.html`，内嵌 SVG/CSS，无外部资源 | 2026-10-27 |
+| A.2 2D 动画 | 完成 | 车轮旋转、道路滚动、身体起伏、翅膀/腿部循环，支持 reduced-motion | 2026-10-27 |
+
+## Phase 8 — 跨设备同步
+
+| Step | 状态 | 验证 | 记录 |
+|---|---|---|---|
+| 8.1 本地同步存储 | 完成 | JSON 原子写入、设备身份、cursor、导出/导入 bundle | 2026-10-27 |
+| 8.2 幂等与冲突 | 完成 | eventId/idempotencyKey 去重，版本覆盖和同版本冲突报告 | 2026-10-27 |
+| 8.3 TaskLedger 跨设备恢复 | 完成 | 设备 B 导入任务事件和 checkpoint 后继续恢复 | 2026-10-27 |
+| 8.4 Phase 8 验收 | 完成 | 32 个测试、typecheck、lint、build 全部通过 | 2026-10-27 |
+
+### Phase 8 验证记录
+
+- `pnpm typecheck`：通过。
+- `pnpm lint`：通过。
+- `pnpm test`：通过，12 个测试文件、32 个测试。
+- `pnpm build`：通过。
+- `LocalSyncStore` 使用 eventId、version、idempotencyKey、设备 ID 和 cursor；重复事件不会再次进入账本。
+- 同版本不同 payload 报告冲突，旧版本不会覆盖新版本；导入期间可断点续传。
+- `LedgerSyncAdapter` 导出任务事件、工具结果、验证结果和 checkpoint；设备 B 导入后可恢复 checkpoint。
+
+Phase 8 限制：当前同步服务是本地 JSON store 和可替换 adapter，未连接远程网络传输或设备认证服务；对话、记忆和桌宠状态可通过同一 envelope 协议扩展，发布阶段继续补齐服务端实现。

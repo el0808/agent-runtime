@@ -63,3 +63,14 @@
 - FakePetAdapter 是默认离线测试实现；Live2DPetAdapter 只依赖可替换 transport，ElectronPetAdapter 通过固定 IPC channel 发送事件，便于接入 Open Yachiyo 而不把它变成核心依赖。
 - 流式模型增量直接转成 textDelta，语音和口型同步通过 VoiceAdapter 注入；适配器只转发，不推断任务完成。
 - 断线时事件按顺序进入内存队列，连接恢复后 flush；重连失败会按退避间隔继续尝试，任务状态仍由 SQLite 账本独立保存。
+
+## 2026-10-27 — 插入任务：SVG 动画
+
+- 单独 HTML 放在 `artifacts/pelican-bicycle.html`，只用内嵌 SVG 和 CSS keyframes，不引入运行时依赖；该文件与 Agent Runtime 解耦，便于直接在浏览器打开。
+
+## 2026-10-27 — Phase 8
+
+- 同步先采用本地 JSON envelope，字段固定包含 eventId、version、idempotencyKey、deviceId、entityType、entityId、occurredAt、payload 和 cursor；远程服务可实现同一接口。
+- 导入先写入 LocalSyncStore 再按 RuntimeEvent sequence 追加 TaskLedger，`task.created` 只在目标设备没有任务时创建，避免重复执行。
+- 同版本不同 payload 产生显式冲突，较旧版本丢弃；checkpoint 和工具/验证事件作为独立 entity 传输，设备 B 可在导入后恢复。
+- GitHub CI 的 frozen lockfile 失败来自 workspace package 新增依赖未同步锁文件；每次新增包依赖后先运行 `pnpm install --lockfile-only` 并提交 lockfile。
