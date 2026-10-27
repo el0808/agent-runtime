@@ -137,3 +137,23 @@ Phase 4 限制：当前审批状态为本地内存实现，补偿动作由调用
 - 高风险审批即使 Jev 返回 approve，也强制使用确定性 review/阻断结果。
 
 Phase 5 限制：Jev 目前是注入式 transport，未连接真实服务；成本比较和统计报告在 Phase 9 Benchmark 完成。
+
+## Phase 6 — 记忆和上下文压缩
+
+| Step | 状态 | 验证 | 记录 |
+|---|---|---|---|
+| 6.1 多级持久化记忆 | 完成 | SQLite MemoryStore 支持 global/project/task/session scope、搜索、过期字段 | 2026-10-27 |
+| 6.2 版本、编辑、删除和冲突 | 完成 | 乐观版本校验、history、restoreVersion、resolveConflict 和用户可编辑 API | 2026-10-27 |
+| 6.3 主动上下文压缩 | 完成 | ContextCompressor 保存原始消息、前后 token 估算和压缩摘要 | 2026-10-27 |
+| 6.4 质量检查与验收 | 完成 | 关键约束保留检查，`context.compressed` 事件，27 个测试通过 | 2026-10-27 |
+
+### Phase 6 验证记录
+
+- `pnpm typecheck`：通过。
+- `pnpm lint`：通过。
+- `pnpm test`：通过，10 个测试文件、27 个测试。
+- `MemoryStore` 关闭并重开 SQLite 后仍能读取记忆和版本历史。
+- 更新需要 expectedVersion，过期版本会被拒绝；删除、恢复和冲突解决均可审计。
+- 压缩结果保留原始消息数组，摘要前后 token、减少比例、保留约束和质量状态可读取，并写入 RuntimeEvent。
+
+Phase 6 限制：当前搜索是 SQLite 文本匹配，不依赖外部向量服务；摘要器默认确定性规则，可注入模型摘要器，压缩成功率和 token 统计将在 Phase 9 Benchmark 量化。

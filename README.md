@@ -54,6 +54,11 @@
 - 每次决策追加 `decision.evaluated`，记录 provider、选择、置信度、延迟、回退和权威性。
 - high/critical 审批始终由确定性规则处理，Jev 不能单独授权高风险动作。
 
+已完成 Phase 6：
+
+- `@agent/memory` 提供 SQLite 多级记忆、来源/置信度/版本/过期时间、搜索编辑删除、历史恢复和冲突处理。
+- `ContextCompressor` 主动生成摘要并保留原始消息，验证关键约束，记录压缩前后 token 和 `context.compressed` 事件。
+
 ## 目录结构
 
 ```text

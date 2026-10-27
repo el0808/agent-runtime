@@ -119,7 +119,9 @@ export const RUNTIME_EVENT_TYPES = {
   RETRY_SCHEDULED: "retry.scheduled",
   COMPENSATION_EXECUTED: "compensation.executed",
   RECOVERY_STARTED: "recovery.started",
-  DECISION_EVALUATED: "decision.evaluated"
+  DECISION_EVALUATED: "decision.evaluated",
+  MEMORY_UPDATED: "memory.updated",
+  CONTEXT_COMPRESSED: "context.compressed"
 } as const;
 
 export type RuntimeEventType = (typeof RUNTIME_EVENT_TYPES)[keyof typeof RUNTIME_EVENT_TYPES];
@@ -295,6 +297,22 @@ export interface DecisionEvaluatedPayload {
   reason: string;
 }
 
+export interface MemoryUpdatedPayload {
+  memoryId: string;
+  scope: "global" | "project" | "task" | "session";
+  action: "created" | "updated" | "deleted" | "restored" | "conflict";
+  version: number;
+}
+
+export interface ContextCompressedPayload {
+  compressionId: string;
+  beforeTokens: number;
+  afterTokens: number;
+  reductionRatio: number;
+  qualityPassed: boolean;
+  preservedConstraints: readonly string[];
+}
+
 export interface RuntimeEventBase<T extends RuntimeEventType, P> {
   eventId: string;
   taskId: string;
@@ -333,6 +351,8 @@ export interface RuntimeEventByType {
   "compensation.executed": RuntimeEventBase<"compensation.executed", CompensationExecutedPayload>;
   "recovery.started": RuntimeEventBase<"recovery.started", RecoveryStartedPayload>;
   "decision.evaluated": RuntimeEventBase<"decision.evaluated", DecisionEvaluatedPayload>;
+  "memory.updated": RuntimeEventBase<"memory.updated", MemoryUpdatedPayload>;
+  "context.compressed": RuntimeEventBase<"context.compressed", ContextCompressedPayload>;
 }
 
 export type RuntimeEvent<T extends RuntimeEventType = RuntimeEventType> = {

@@ -49,3 +49,10 @@
 - Jev 使用 AbortSignal、超时和置信度阈值；transport 错误、超时、低置信度或非法选项都回退到强模型 provider，默认强模型为规则 provider。
 - Shadow Mode 先保留规则结果为权威，再记录 Jev 非权威结果，便于比较而不改变事件顺序和任务状态。
 - approval 且风险为 high/critical 时跳过 Jev 授权，始终采用确定性规则；这条约束位于 DecisionRouter 内，不依赖 prompt。
+
+## 2026-10-27 — Phase 6
+
+- 记忆使用独立 SQLite 数据库，记录 scope、scopeId、来源、时间、置信度、版本、过期时间和冲突状态；每次修改写入 memory_versions，原版本永不覆盖。
+- 编辑采用 expectedVersion 乐观并发控制，版本过期直接返回冲突；用户可以搜索、更新、删除、恢复历史版本和标记冲突已解决。
+- ContextCompressor 默认使用确定性摘要，保留约束句和最近上下文；原始消息完整保留，压缩结果记录 token 估算、减少比例和质量检查。
+- 记忆修改和压缩仅在提供 taskId/ledger 时写入 RuntimeEvent，避免全局记忆强行绑定到不存在的任务，同时保证任务范围动作可回放。

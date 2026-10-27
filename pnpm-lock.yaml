@@ -35,7 +35,14 @@ importers:
 
   apps/runtime: {}
 
-  packages/memory: {}
+  packages/memory:
+    dependencies:
+      '@agent/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@agent/task-ledger':
+        specifier: workspace:*
+        version: link:../task-ledger
 
   packages/pet-adapter: {}
 
