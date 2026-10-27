@@ -94,3 +94,26 @@ Phase 2 限制：真实模型 Provider、重试策略、权限审批和回滚属
 - PEV 支持离线 Planner 和确定性 Verifier；Verifier 结果追加 `verification.recorded`，不由模型自行宣布完成。
 
 Phase 3 限制：当前 Runner 适配器复用 ReAct 执行器，复杂 Planner、图节点和后台队列的生产级持久化调度留给后续安全恢复与发布阶段；路由本身已可测试、记录和回放。
+
+## Phase 4 — 安全、验证和恢复
+
+| Step | 状态 | 验证 | 记录 |
+|---|---|---|---|
+| 4.1 风险分类和权限策略 | 完成 | 删除/迁移/部署等命令分类；高风险拒绝或要求审批，写文件默认审批 | 2026-10-27 |
+| 4.2 人工审批和副作用检查点 | 完成 | `ApprovalManager` 记录申请/决定；中高风险执行前创建 SQLite checkpoint | 2026-10-27 |
+| 4.3 Deterministic Verifier | 完成 | 任务完成状态和事件回放一致性检查，结果写入 `VerificationResult` | 2026-10-27 |
+| 4.4 恢复、重试和补偿 | 完成 | Retry、checkpoint restore、三类补偿动作和失败事件测试 | 2026-10-27 |
+| 4.5 Phase 4 验收 | 完成 | lint、typecheck、test（21/21）、build 全部通过 | 2026-10-27 |
+
+### Phase 4 验证记录
+
+- `pnpm typecheck`：通过。
+- `pnpm lint`：通过。
+- `pnpm test`：通过，8 个测试文件、21 个测试。
+- `pnpm build`：通过。
+- 确定性策略直接阻止 critical 操作；high/medium 操作在 `ApprovalManager` 明确批准后才可执行。
+- `GuardedToolExecutor` 在副作用前建立 checkpoint，`RecoveryManager` 支持恢复和有上限重试。
+- `CompensationRegistry` 逆序执行注册动作，并为成功/失败追加 `compensation.executed`；测试覆盖文件恢复、删除和记录恢复三类补偿语义。
+- Jev 未接入权限决定，后续 Phase 只能提供建议，不能绕过此策略。
+
+Phase 4 限制：当前审批状态为本地内存实现，补偿动作由调用方注册，恢复未接入进程监督器；这些边界会在同步、桌宠和 Benchmark 阶段继续验证。

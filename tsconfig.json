@@ -5,6 +5,8 @@
     { "path": "packages/task-ledger" },
     { "path": "packages/tools" },
     { "path": "packages/runner" },
-    { "path": "packages/routing" }
+    { "path": "packages/routing" },
+    { "path": "packages/policy" },
+    { "path": "packages/verifier" }
   ]
 }

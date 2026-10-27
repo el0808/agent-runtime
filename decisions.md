@@ -34,3 +34,11 @@
 - 路由决策追加 `route.decided` RuntimeEvent，保存选中的 Runner、理由、证据、置信度和升级来源；Runner 选择不会成为内存中的不可审计分支。
 - Phase 3 的 Planner、State Graph 和 Background Runner 先采用统一 Runner 接口和 ReAct 委托实现，Planner 可注入离线计划器，PEV 可注入确定性 Verifier；生产调度、审批和恢复在后续 Phase 扩展。
 - 连续失败达到两次时，规则路由将 Direct 升级为 Planner-Executor-Verifier；高复杂度和副作用任务默认进入 PEV，固定流程进入 State Graph，长任务进入 Background。
+
+## 2026-10-27 — Phase 4
+
+- 风险分类采用确定性关键词和工具默认等级：读文件/测试为 low，写文件为 medium，部署/迁移/发送为 high，删除/数据库破坏命令为 critical。critical 直接拒绝，high 和默认 medium 必须人工审批。
+- 审批申请和决定都是 RuntimeEvent；即使 Jev 或模型建议 approve，也必须通过 `ToolPermissionPolicy` 和 `ApprovalManager` 的确定性检查。
+- 外部副作用前由 `GuardedToolExecutor` 创建 checkpoint，失败恢复通过追加 `recovery.started` 后调用 TaskLedger 的 checkpoint restore，避免覆盖事件历史。
+- Verifier 只读取账本和工具证据，输出结构化 `VerificationResult`；完成状态与事件回放一致性是默认检查。
+- 补偿采用注册式动作并按逆序执行，当前提供通用的文件恢复、删除恢复和记录恢复接口语义；每个结果写入 `compensation.executed`。

@@ -39,7 +39,17 @@ importers:
 
   packages/pet-adapter: {}
 
-  packages/policy: {}
+  packages/policy:
+    dependencies:
+      '@agent/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@agent/task-ledger':
+        specifier: workspace:*
+        version: link:../task-ledger
+      '@agent/tools':
+        specifier: workspace:*
+        version: link:../tools
 
   packages/protocol: {}
 
@@ -84,7 +94,14 @@ importers:
         specifier: workspace:*
         version: link:../protocol
 
-  packages/verifier: {}
+  packages/verifier:
+    dependencies:
+      '@agent/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@agent/task-ledger':
+        specifier: workspace:*
+        version: link:../task-ledger
 
 packages:
 

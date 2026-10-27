@@ -113,7 +113,12 @@ export const RUNTIME_EVENT_TYPES = {
   TOOL_FAILED: "tool.failed",
   TOOL_TIMED_OUT: "tool.timed_out",
   TOOL_CANCELLED: "tool.cancelled",
-  ROUTE_DECIDED: "route.decided"
+  ROUTE_DECIDED: "route.decided",
+  APPROVAL_REQUESTED: "approval.requested",
+  APPROVAL_RESOLVED: "approval.resolved",
+  RETRY_SCHEDULED: "retry.scheduled",
+  COMPENSATION_EXECUTED: "compensation.executed",
+  RECOVERY_STARTED: "recovery.started"
 } as const;
 
 export type RuntimeEventType = (typeof RUNTIME_EVENT_TYPES)[keyof typeof RUNTIME_EVENT_TYPES];
@@ -242,6 +247,41 @@ export interface RouteDecidedPayload {
   upgradedFrom?: RunnerType;
 }
 
+export type ApprovalDecision = "approved" | "rejected" | "expired";
+
+export interface ApprovalRequestedPayload {
+  approvalId: string;
+  toolName: string;
+  risk: "low" | "medium" | "high" | "critical";
+  reason: string;
+}
+
+export interface ApprovalResolvedPayload {
+  approvalId: string;
+  decision: ApprovalDecision;
+  actor: string;
+  reason?: string;
+}
+
+export interface RetryScheduledPayload {
+  operation: string;
+  attempt: number;
+  maxAttempts: number;
+  reason: string;
+}
+
+export interface CompensationExecutedPayload {
+  compensationId: string;
+  action: string;
+  status: "succeeded" | "failed";
+  error?: TaskFailure;
+}
+
+export interface RecoveryStartedPayload {
+  checkpointId?: string;
+  reason: string;
+}
+
 export interface RuntimeEventBase<T extends RuntimeEventType, P> {
   eventId: string;
   taskId: string;
@@ -274,6 +314,11 @@ export interface RuntimeEventByType {
   "tool.timed_out": RuntimeEventBase<"tool.timed_out", ToolTimedOutPayload>;
   "tool.cancelled": RuntimeEventBase<"tool.cancelled", ToolCancelledPayload>;
   "route.decided": RuntimeEventBase<"route.decided", RouteDecidedPayload>;
+  "approval.requested": RuntimeEventBase<"approval.requested", ApprovalRequestedPayload>;
+  "approval.resolved": RuntimeEventBase<"approval.resolved", ApprovalResolvedPayload>;
+  "retry.scheduled": RuntimeEventBase<"retry.scheduled", RetryScheduledPayload>;
+  "compensation.executed": RuntimeEventBase<"compensation.executed", CompensationExecutedPayload>;
+  "recovery.started": RuntimeEventBase<"recovery.started", RecoveryStartedPayload>;
 }
 
 export type RuntimeEvent<T extends RuntimeEventType = RuntimeEventType> = {

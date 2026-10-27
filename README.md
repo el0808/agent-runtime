@@ -42,6 +42,12 @@
 - 规则路由支持 ReAct、Planner-Executor-Verifier、State Graph 和 Background，并在连续失败时动态升级。
 - 每次路由追加 `route.decided` 事件，记录理由、证据、置信度和升级来源；PEV 可接入确定性离线 Verifier。
 
+已完成 Phase 4：
+
+- `@agent/policy` 提供命令风险分类、工具权限、人工审批和副作用前 checkpoint。
+- `@agent/verifier` 提供完成状态与事件回放一致性的确定性验证器。
+- `RecoveryManager` 支持 checkpoint 恢复和有限重试，`CompensationRegistry` 支持逆序补偿并记录结果；高风险授权不依赖模型或 Jev。
+
 ## 目录结构
 
 ```text
