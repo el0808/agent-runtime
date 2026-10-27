@@ -42,3 +42,10 @@
 - 外部副作用前由 `GuardedToolExecutor` 创建 checkpoint，失败恢复通过追加 `recovery.started` 后调用 TaskLedger 的 checkpoint restore，避免覆盖事件历史。
 - Verifier 只读取账本和工具证据，输出结构化 `VerificationResult`；完成状态与事件回放一致性是默认检查。
 - 补偿采用注册式动作并按逆序执行，当前提供通用的文件恢复、删除恢复和记录恢复接口语义；每个结果写入 `compensation.executed`。
+
+## 2026-10-27 — Phase 5
+
+- DecisionProvider 只返回有限选项、置信度和理由；Rules provider 是安全基线，Jev adapter 只负责可替换的快速建议。
+- Jev 使用 AbortSignal、超时和置信度阈值；transport 错误、超时、低置信度或非法选项都回退到强模型 provider，默认强模型为规则 provider。
+- Shadow Mode 先保留规则结果为权威，再记录 Jev 非权威结果，便于比较而不改变事件顺序和任务状态。
+- approval 且风险为 high/critical 时跳过 Jev 授权，始终采用确定性规则；这条约束位于 DecisionRouter 内，不依赖 prompt。

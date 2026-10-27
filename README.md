@@ -48,6 +48,12 @@
 - `@agent/verifier` 提供完成状态与事件回放一致性的确定性验证器。
 - `RecoveryManager` 支持 checkpoint 恢复和有限重试，`CompensationRegistry` 支持逆序补偿并记录结果；高风险授权不依赖模型或 Jev。
 
+已完成 Phase 5：
+
+- `@agent/routing` 提供 `DecisionProvider`、规则决策、注入式 Jev Adapter、超时/错误回退、置信度阈值和 Shadow Mode。
+- 每次决策追加 `decision.evaluated`，记录 provider、选择、置信度、延迟、回退和权威性。
+- high/critical 审批始终由确定性规则处理，Jev 不能单独授权高风险动作。
+
 ## 目录结构
 
 ```text

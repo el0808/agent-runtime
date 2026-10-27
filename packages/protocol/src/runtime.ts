@@ -118,7 +118,8 @@ export const RUNTIME_EVENT_TYPES = {
   APPROVAL_RESOLVED: "approval.resolved",
   RETRY_SCHEDULED: "retry.scheduled",
   COMPENSATION_EXECUTED: "compensation.executed",
-  RECOVERY_STARTED: "recovery.started"
+  RECOVERY_STARTED: "recovery.started",
+  DECISION_EVALUATED: "decision.evaluated"
 } as const;
 
 export type RuntimeEventType = (typeof RUNTIME_EVENT_TYPES)[keyof typeof RUNTIME_EVENT_TYPES];
@@ -282,6 +283,18 @@ export interface RecoveryStartedPayload {
   reason: string;
 }
 
+export interface DecisionEvaluatedPayload {
+  decisionId: string;
+  provider: string;
+  kind: "tool" | "stop" | "escalate" | "approval" | "runner";
+  choice: string;
+  confidence: number;
+  latencyMs: number;
+  authoritative: boolean;
+  fallback?: boolean;
+  reason: string;
+}
+
 export interface RuntimeEventBase<T extends RuntimeEventType, P> {
   eventId: string;
   taskId: string;
@@ -319,6 +332,7 @@ export interface RuntimeEventByType {
   "retry.scheduled": RuntimeEventBase<"retry.scheduled", RetryScheduledPayload>;
   "compensation.executed": RuntimeEventBase<"compensation.executed", CompensationExecutedPayload>;
   "recovery.started": RuntimeEventBase<"recovery.started", RecoveryStartedPayload>;
+  "decision.evaluated": RuntimeEventBase<"decision.evaluated", DecisionEvaluatedPayload>;
 }
 
 export type RuntimeEvent<T extends RuntimeEventType = RuntimeEventType> = {

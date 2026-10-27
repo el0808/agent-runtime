@@ -117,3 +117,23 @@ Phase 3 限制：当前 Runner 适配器复用 ReAct 执行器，复杂 Planner�
 - Jev 未接入权限决定，后续 Phase 只能提供建议，不能绕过此策略。
 
 Phase 4 限制：当前审批状态为本地内存实现，补偿动作由调用方注册，恢复未接入进程监督器；这些边界会在同步、桌宠和 Benchmark 阶段继续验证。
+
+## Phase 5 — Jev Decision Layer
+
+| Step | 状态 | 验证 | 记录 |
+|---|---|---|---|
+| 5.1 DecisionProvider 与规则层 | 完成 | `RulesDecisionProvider` 支持 tool/stop/escalate/approval/runner 有限选项 | 2026-10-27 |
+| 5.2 Jev Adapter 与超时回退 | 完成 | 可替换 transport、AbortSignal、超时/错误自动回退 rules/strong | 2026-10-27 |
+| 5.3 置信度与 Shadow Mode | 完成 | 阈值过滤低置信度，Shadow 记录非权威 Jev 与权威规则结果 | 2026-10-27 |
+| 5.4 安全和验收 | 完成 | high/critical approval 永远由确定性规则决定；25 个测试通过 | 2026-10-27 |
+
+### Phase 5 验证记录
+
+- `pnpm typecheck`：通过。
+- `pnpm lint`：通过。
+- `pnpm test`：通过，9 个测试文件、25 个测试。
+- Jev 调用记录 provider、choice、置信度、延迟、回退标记和权威性到 `decision.evaluated`。
+- Jev transport 超时或抛错时自动回退；低置信度或非法选项不会改变规则结果。
+- 高风险审批即使 Jev 返回 approve，也强制使用确定性 review/阻断结果。
+
+Phase 5 限制：Jev 目前是注入式 transport，未连接真实服务；成本比较和统计报告在 Phase 9 Benchmark 完成。

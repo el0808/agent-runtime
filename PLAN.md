@@ -415,14 +415,14 @@ F. 你的 Runtime + Jev + Verifier + Recovery
 
 ### Phase 5：Jev 集成
 
-- [ ] 定义 `DecisionProvider` 接口；
-- [ ] 实现 `RulesDecisionProvider`；
-- [ ] 实现 `JevDecisionProvider`；
-- [ ] 实现 Shadow Mode；
-- [ ] 实现置信度阈值；
-- [ ] 低置信度自动回退强模型；
-- [ ] 记录 Jev 延迟、概率、路由和结果；
-- [ ] 禁止 Jev 单独通过高风险操作。
+- [x] 定义 `DecisionProvider` 接口；
+- [x] 实现 `RulesDecisionProvider`；
+- [x] 实现 `JevDecisionProvider`；
+- [x] 实现 Shadow Mode；
+- [x] 实现置信度阈值；
+- [x] 低置信度自动回退强模型；
+- [x] 记录 Jev 延迟、概率、路由和结果；
+- [x] 禁止 Jev 单独通过高风险操作。
 
 验收：Jev 不可用时系统仍能自动回退到强模型。
 
