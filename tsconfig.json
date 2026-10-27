@@ -4,6 +4,7 @@
     { "path": "packages/protocol" },
     { "path": "packages/task-ledger" },
     { "path": "packages/tools" },
-    { "path": "packages/runner" }
+    { "path": "packages/runner" },
+    { "path": "packages/routing" }
   ]
 }

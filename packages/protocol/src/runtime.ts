@@ -112,7 +112,8 @@ export const RUNTIME_EVENT_TYPES = {
   TOOL_COMPLETED: "tool.completed",
   TOOL_FAILED: "tool.failed",
   TOOL_TIMED_OUT: "tool.timed_out",
-  TOOL_CANCELLED: "tool.cancelled"
+  TOOL_CANCELLED: "tool.cancelled",
+  ROUTE_DECIDED: "route.decided"
 } as const;
 
 export type RuntimeEventType = (typeof RUNTIME_EVENT_TYPES)[keyof typeof RUNTIME_EVENT_TYPES];
@@ -233,6 +234,14 @@ export interface ToolCancelledPayload {
   durationMs: number;
 }
 
+export interface RouteDecidedPayload {
+  runnerType: RunnerType;
+  reason: string;
+  evidence: JsonObject;
+  confidence?: number;
+  upgradedFrom?: RunnerType;
+}
+
 export interface RuntimeEventBase<T extends RuntimeEventType, P> {
   eventId: string;
   taskId: string;
@@ -264,6 +273,7 @@ export interface RuntimeEventByType {
   "tool.failed": RuntimeEventBase<"tool.failed", ToolFailedPayload>;
   "tool.timed_out": RuntimeEventBase<"tool.timed_out", ToolTimedOutPayload>;
   "tool.cancelled": RuntimeEventBase<"tool.cancelled", ToolCancelledPayload>;
+  "route.decided": RuntimeEventBase<"route.decided", RouteDecidedPayload>;
 }
 
 export type RuntimeEvent<T extends RuntimeEventType = RuntimeEventType> = {

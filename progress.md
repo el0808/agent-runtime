@@ -74,3 +74,23 @@ Phase 1 阻塞：无。
 - ReAct Runner 每个任务使用独立 session、消息列表和取消控制器，任务状态可由事件回放重建。
 
 Phase 2 限制：真实模型 Provider、重试策略、权限审批和回滚属于后续 Phase；当前仅提供可替换接口和离线 FakeProvider。桌面、Jev、Memory、Verifier、同步系统仍未接入。
+
+## Phase 3 — Runner Router
+
+| Step | 状态 | 验证 | 记录 |
+|---|---|---|---|
+| 3.1 TaskProfile 特征提取 | 完成 | 识别步骤数、复杂度、固定流程、长任务和外部副作用信号 | 2026-10-27 |
+| 3.2 规则路由与证据 | 完成 | `route.decided` 事件保存 runner、理由、特征证据和置信度 | 2026-10-27 |
+| 3.3 多 Runner 适配 | 完成 | ReAct、Planner-Executor-Verifier、State Graph、Background Runner 接口和离线执行路径 | 2026-10-27 |
+| 3.4 动态升级与验收 | 完成 | 连续失败从 Direct 升级 PEV；18 个测试、typecheck、lint 通过 | 2026-10-27 |
+
+### Phase 3 验证记录
+
+- `pnpm typecheck`：通过。
+- `pnpm lint`：通过。
+- `pnpm test`：通过，6 个测试文件、18 个测试。
+- `route.decided` 事件参与事件回放，不改变任务状态事实来源。
+- 简单任务使用 ReAct；固定流程使用 State Graph；长任务使用 Background；复杂或有副作用任务使用 Planner-Executor-Verifier。
+- PEV 支持离线 Planner 和确定性 Verifier；Verifier 结果追加 `verification.recorded`，不由模型自行宣布完成。
+
+Phase 3 限制：当前 Runner 适配器复用 ReAct 执行器，复杂 Planner、图节点和后台队列的生产级持久化调度留给后续安全恢复与发布阶段；路由本身已可测试、记录和回放。

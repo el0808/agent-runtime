@@ -36,6 +36,12 @@
 - `@agent/tools` 提供 ToolRegistry、AbortSignal 超时/取消，以及受工作区限制的文件读写和固定测试工具。
 - 模型增量、工具调用、失败、超时、取消和 session 生命周期均写入 RuntimeEvent；每个任务使用独立 session 和消息历史。
 
+已完成 Phase 3：
+
+- `@agent/routing` 根据任务目标和 metadata 提取复杂度、步骤、固定流程、长任务及副作用特征。
+- 规则路由支持 ReAct、Planner-Executor-Verifier、State Graph 和 Background，并在连续失败时动态升级。
+- 每次路由追加 `route.decided` 事件，记录理由、证据、置信度和升级来源；PEV 可接入确定性离线 Verifier。
+
 ## 目录结构
 
 ```text

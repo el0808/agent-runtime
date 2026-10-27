@@ -390,13 +390,13 @@ F. 你的 Runtime + Jev + Verifier + Recovery
 
 ### Phase 3：Runner Router
 
-- [ ] 实现任务特征提取；
-- [ ] 实现规则路由；
-- [ ] 实现 Planner-Executor-Verifier；
-- [ ] 实现 State Graph Runner；
-- [ ] 实现 Background Runner；
-- [ ] 实现 Runner 动态升级；
-- [ ] 保存每次路由决策和证据。
+- [x] 实现任务特征提取；
+- [x] 实现规则路由；
+- [x] 实现 Planner-Executor-Verifier；
+- [x] 实现 State Graph Runner；
+- [x] 实现 Background Runner；
+- [x] 实现 Runner 动态升级；
+- [x] 保存每次路由决策和证据。
 
 验收：同一任务能根据复杂度选择不同 Runner。
 

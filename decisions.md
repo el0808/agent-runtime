@@ -27,3 +27,10 @@
 - `ToolRegistry` 以名称注册定义和输入校验，执行结果统一分为 succeeded、failed、timed_out、cancelled；工具收到独立 AbortSignal，超时或取消不会把异常传播到进程级。
 - 内置工具限定为工作区内 UTF-8 文件读写和固定的 `pnpm test`，路径越界直接拒绝，避免 Phase 2 引入任意 shell 执行权限。
 - ReAct Runner 使用工具调用后追加 tool message，再请求下一轮模型；达到最大轮数会记录失败事件。暂停和取消由 Runner 控制器触发，恢复通过追加 `task.resumed` 后重新运行。
+
+## 2026-10-27 — Phase 3
+
+- 任务特征提取只使用 `TaskProfile.goal` 和显式 metadata，输出步骤数、复杂度、固定流程、长任务和外部副作用信号，确保规则路由可重放且不依赖模型。
+- 路由决策追加 `route.decided` RuntimeEvent，保存选中的 Runner、理由、证据、置信度和升级来源；Runner 选择不会成为内存中的不可审计分支。
+- Phase 3 的 Planner、State Graph 和 Background Runner 先采用统一 Runner 接口和 ReAct 委托实现，Planner 可注入离线计划器，PEV 可注入确定性 Verifier；生产调度、审批和恢复在后续 Phase 扩展。
+- 连续失败达到两次时，规则路由将 Direct 升级为 Planner-Executor-Verifier；高复杂度和副作用任务默认进入 PEV，固定流程进入 State Graph，长任务进入 Background。
