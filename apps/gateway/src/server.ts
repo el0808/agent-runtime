@@ -263,6 +263,15 @@ function writeStream(res: ServerResponse, events: readonly RuntimeEvent[]): void
   res.end();
 }
 
+/** Real port, resolving 0 to whatever the OS assigned. */
+function boundPort(server: { address(): unknown }, fallback: number): number {
+  const address = server.address();
+  if (typeof address === "object" && address !== null && "port" in address) {
+    return Number((address as { port: number }).port);
+  }
+  return fallback;
+}
+
 export async function startServer(runtime: AgentRuntime, options: GatewayOptions = {}): Promise<GatewayServer> {
   const port = options.port ?? 4317;
   const host = options.host ?? "127.0.0.1";
@@ -326,7 +335,7 @@ export async function startServer(runtime: AgentRuntime, options: GatewayOptions
   });
 
   return {
-    url: `http://${host}:${port}`,
+    url: `http://${host}:${boundPort(server, port)}`,
     close: () =>
       new Promise<void>((resolve, reject) => {
         server.close((error) => (error === undefined ? resolve() : reject(error)));

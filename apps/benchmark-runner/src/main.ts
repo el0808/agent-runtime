@@ -1,4 +1,6 @@
-import { writeReport, BenchmarkRunner, createLongTaskRR } from "@agent/benchmark";
+import { readFile } from "node:fs/promises";
+import { writeReport, BenchmarkRunner, createLongTaskRR, importPublicJsonlDataset } from "@agent/benchmark";
+import type { LongTaskCase } from "@agent/benchmark";
 import { createRuntimeScenariosFor, prepareWorkspaces, withTempRoot } from "./factory.js";
 
 function flag(name: string): string | undefined {
@@ -6,24 +8,40 @@ function flag(name: string): string | undefined {
   return index >= 0 ? process.argv[index + 1] : undefined;
 }
 
-async function main(): Promise<void> {
+/** Loads a task set: `--dataset <file.jsonl>` for public sets, else LongTask-RR. */
+async function loadTasks(): Promise<{ tasks: readonly LongTaskCase[]; source: string }> {
+  const datasetPath = flag("--dataset");
+  if (datasetPath !== undefined) {
+    const text = await readFile(datasetPath, "utf8");
+    return { tasks: importPublicJsonlDataset(text), source: datasetPath };
+  }
   const casesPerCategory = Number(flag("--cases") ?? "5");
+  if (!Number.isInteger(casesPerCategory) || casesPerCategory < 1) {
+    throw new Error("--cases must be a positive integer");
+  }
+  return { tasks: createLongTaskRR(casesPerCategory), source: "LongTask-RR" };
+}
+
+async function main(): Promise<void> {
   const repetitions = Number(flag("--repetitions") ?? "1");
   const outputDir = flag("--out") ?? "reports";
 
-  if (!Number.isInteger(casesPerCategory) || casesPerCategory < 1) {
-    process.stderr.write("--cases must be a positive integer\n");
-    process.exitCode = 2;
-    return;
-  }
   if (!Number.isInteger(repetitions) || repetitions < 1) {
     process.stderr.write("--repetitions must be a positive integer\n");
     process.exitCode = 2;
     return;
   }
 
-  const tasks = createLongTaskRR(casesPerCategory);
-  process.stdout.write(`LongTask-RR: ${tasks.length} tasks, ${repetitions} repetition(s)\n`);
+  let loaded: { tasks: readonly LongTaskCase[]; source: string };
+  try {
+    loaded = await loadTasks();
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.exitCode = 2;
+    return;
+  }
+  const { tasks, source } = loaded;
+  process.stdout.write(`${source}: ${tasks.length} tasks, ${repetitions} repetition(s)\n`);
 
   const report = await withTempRoot(async (root) => {
     await prepareWorkspaces(root, tasks.map((task) => task.id));

@@ -14,5 +14,8 @@
   },
   "dependencies": {
     "@agent/pet-adapter": "workspace:*"
+  },
+  "optionalDependencies": {
+    "electron": "^30.5.1"
   }
 }

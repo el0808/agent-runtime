@@ -16,5 +16,9 @@
     "start": "node dist/main.js",
     "build": "tsc -b",
     "typecheck": "tsc -b --pretty false"
+  },
+  "dependencies": {
+    "@agent/routing": "workspace:*",
+    "@agent/protocol": "workspace:*"
   }
 }

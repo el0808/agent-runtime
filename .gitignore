@@ -6,8 +6,10 @@ coverage/
 *.log
 *.tsbuildinfo
 
-storage/runtime.db
-storage/runtime.db-*
+# Runtime state: databases, device identity and sync journals are per-machine.
+storage/*.db
+storage/*.db-*
+storage/*.json
 storage/artifacts/*
 storage/checkpoints/*
 !storage/artifacts/.gitkeep

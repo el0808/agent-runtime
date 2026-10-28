@@ -29,6 +29,15 @@ export interface RendererServer {
  * Serves the renderer plus imported model assets, and proxies `/api/*` to the
  * gateway. Same-origin keeps fetch and EventSource free of CORS handling.
  */
+/** Real port, resolving 0 to whatever the OS assigned. */
+function boundPort(server: { address(): unknown }, fallback: number): number {
+  const address = server.address();
+  if (typeof address === "object" && address !== null && "port" in address) {
+    return Number((address as { port: number }).port);
+  }
+  return fallback;
+}
+
 export async function serveApp(options: { port?: number; host?: string; assetsDir?: string; gateway?: string } = {}): Promise<RendererServer> {
   const port = options.port ?? 4321;
   const host = options.host ?? "127.0.0.1";
@@ -126,7 +135,17 @@ export async function serveApp(options: { port?: number; host?: string; assetsDi
         res.writeHead(200, {
           "content-type": MIME[path.extname(resolved).toLowerCase()] ?? "application/octet-stream",
           "content-length": info.size,
-          "cache-control": "no-cache"
+          "cache-control": "no-cache",
+          // The Live2D runtime is fetched from the vendor CDN; everything else is local.
+          "content-security-policy": [
+            "default-src 'self'",
+            "script-src 'self' https://cubism.live2d.com 'unsafe-inline' 'unsafe-eval'",
+            "style-src 'self' 'unsafe-inline'",
+            "img-src 'self' data: blob:",
+            "media-src 'self' blob:",
+            "connect-src 'self'",
+            "worker-src 'self' blob:"
+          ].join("; ")
         });
         createReadStream(resolved).pipe(res);
         return;
@@ -146,7 +165,7 @@ export async function serveApp(options: { port?: number; host?: string; assetsDi
   });
 
   return {
-    url: `http://${host}:${port}`,
+    url: `http://${host}:${boundPort(server, port)}`,
     close: () => new Promise<void>((resolve, reject) => server.close((error) => (error === undefined ? resolve() : reject(error))))
   };
 }

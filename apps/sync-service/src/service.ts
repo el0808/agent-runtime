@@ -34,6 +34,15 @@ function bearer(req: IncomingMessage): string | undefined {
   return header.slice("Bearer ".length);
 }
 
+/** Real port, resolving 0 to whatever the OS assigned. */
+function boundPort(server: { address(): unknown }, fallback: number): number {
+  const address = server.address();
+  if (typeof address === "object" && address !== null && "port" in address) {
+    return Number((address as { port: number }).port);
+  }
+  return fallback;
+}
+
 export async function startSyncService(options: SyncServiceOptions): Promise<SyncService> {
   const port = options.port ?? 4319;
   const host = options.host ?? "127.0.0.1";
@@ -102,7 +111,7 @@ export async function startSyncService(options: SyncServiceOptions): Promise<Syn
   });
 
   return {
-    url: `http://${host}:${port}`,
+    url: `http://${host}:${boundPort(server, port)}`,
     close: () => new Promise<void>((resolve, reject) => server.close((error) => (error === undefined ? resolve() : reject(error))))
   };
 }

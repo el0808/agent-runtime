@@ -109,6 +109,15 @@ export interface JevServer {
   readonly close: () => Promise<void>;
 }
 
+/** Real port, resolving 0 to whatever the OS assigned. */
+function boundPort(server: { address(): unknown }, fallback: number): number {
+  const address = server.address();
+  if (typeof address === "object" && address !== null && "port" in address) {
+    return Number((address as { port: number }).port);
+  }
+  return fallback;
+}
+
 export async function startJevService(options: { port?: number; host?: string } = {}): Promise<JevServer> {
   const port = options.port ?? 4318;
   const host = options.host ?? "127.0.0.1";
@@ -148,7 +157,7 @@ export async function startJevService(options: { port?: number; host?: string } 
   });
 
   return {
-    url: `http://${host}:${port}`,
+    url: `http://${host}:${boundPort(server, port)}`,
     close: () => new Promise<void>((resolve, reject) => server.close((error) => (error === undefined ? resolve() : reject(error))))
   };
 }

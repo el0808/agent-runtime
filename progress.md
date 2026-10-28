@@ -309,3 +309,41 @@ AGENT_INPUT_PRICE / AGENT_OUTPUT_PRICE   可选，用于成本计算
 - **桌面 App 目前以浏览器方式验证**。Electron 二进制在本机无法下载，外壳代码未实际运行。
 - **Live2D 模型需本地导入**（`pnpm import-live2d`），不随仓库分发。渲染层在模型缺失时退回矢量角色。
 - **prompt tokens 偏高**（约 4400/次，工具定义仅 1233 字节），差额来自中转服务注入的系统提示，不在本项目控制范围。
+
+## PLAN 剩余功能补齐 — 2026-10-28（第三轮）
+
+前两轮之后，PLAN.md 里仍有 4 项在代码层面不存在。本轮全部补齐，并把 Electron 真正跑起来。
+
+| Step | 状态 | 验证 | 记录 |
+|---|---|---|---|
+| P.1 系统 TTS 与口型 | 完成 | `SystemTtsVoice` 调用 macOS `say` / Linux `espeak-ng`；桌宠用 Web Speech API | 2026-10-28 |
+| P.2 Jev 真正接入 | 完成 | `createJevHttpTransport` + `jevTransportFromEnv`；`run()` 用决策结果覆盖路由 | 2026-10-28 |
+| P.3 公开数据集 | 完成 | `--dataset <file.jsonl>` 走 `importPublicJsonlDataset` | 2026-10-28 |
+| P.4 记忆同步 | 完成 | `MemorySyncAdapter` 导出/导入，按 key+scope 匹配，新版本才覆盖 | 2026-10-28 |
+| P.5 Electron 可运行 | 完成 | 国内镜像装成功；Electron 窗口加载页面，标题与 provider 徽章正确 | 2026-10-28 |
+| P.6 CSP | 完成 | 响应头声明 CSP；Live2D 需要 unsafe-eval，Electron 仍会提示 | 2026-10-28 |
+| P.7 port 0 修复 | 完成 | 四个服务改用 `server.address()` 取实际端口 | 2026-10-28 |
+
+### 本轮发现的缺陷
+
+- **DecisionRouter 从未被调用**：Jev 服务、传输层都写好了，但 `run()` 只走规则路由，`decision.evaluated` 事件根本不产生。这与最初"工具绕过策略"是同一类问题——组件存在但没接进必经路径。已修，并实测 Jev 能把路由从 `direct` 改成 `background`（`authoritative: true`）。
+- **`port: 0` 返回错误 URL**：四个服务都返回配置值 0 而非系统分配的端口，导致测试无法连上。
+- **`JevTransport` 类型不匹配**：定义是函数类型，实现写成了类。
+
+### 本轮验证记录
+
+- `pnpm lint`：通过。
+- `pnpm typecheck`：通过。
+- `pnpm test`：通过，20 个测试文件、59 个测试。
+- `pnpm build`：通过。
+- **Electron**：窗口实际加载 `index.html`，`document.title` 为 `Agent Runtime`，provider 徽章显示 `openai · live`，任务列表加载出 3 个任务。
+- **Jev 权威决策**：`provider=jev, choice=background, confidence=0.86, authoritative=true`，路由确实被改变。
+- **公开数据集**：`--dataset` 路径跑通，2 个任务 ×6 组。
+- **真实模型**：`gpt-6.1-sol` 端到端，模型自主调用 `read_file`，成本可计算。
+
+### 仍未完成（诚实记录）
+
+- **Anthropic 协议未对真实 API 验证**，只有单测。
+- **语音只在接口层验证**：`SystemTtsVoice` 和浏览器 Web Speech 都已实现，但未做真人试听确认。
+- **Live2D 模型未随仓库分发**，需 `pnpm import-live2d` 本地导入。
+- **Benchmark 仍无法分离 Jev 与 Verifier 的贡献**：A–E 五组在需要恢复的类别上全部失败，成功率相同。

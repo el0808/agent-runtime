@@ -55,9 +55,49 @@ function showBubble(text) {
   bubbleTimer = setTimeout(() => bubble.classList.remove("on"), 4000);
 }
 
+/* ---------------- voice ---------------- */
+
+const speech = typeof window !== "undefined" && "speechSynthesis" in window ? window.speechSynthesis : null;
+let speaking = false;
+let voiceEnabled = new URLSearchParams(location.search).get("voice") !== "0";
+
+function pickVoice() {
+  if (speech === null) return null;
+  const voices = speech.getVoices();
+  // Prefer a Chinese voice, then any voice matching the document language.
+  return voices.find((voice) => voice.lang?.startsWith("zh")) ?? voices[0] ?? null;
+}
+
 function speak(text) {
   targetMouth = Math.min(1, 0.35 + text.length / 20);
+  if (speech === null || !voiceEnabled) return;
+  const spoken = text.replace(/\s+/g, " ").trim();
+  if (spoken === "") return;
+  // The mouth animation is driven by the utterance's own boundary events.
+  const utterance = new SpeechSynthesisUtterance(spoken.slice(0, 200));
+  const voice = pickVoice();
+  if (voice !== null) utterance.voice = voice;
+  utterance.lang = voice?.lang ?? "zh-CN";
+  utterance.rate = 1.05;
+  utterance.onstart = () => { speaking = true; };
+  utterance.onboundary = () => { targetMouth = 0.9; };
+  utterance.onend = () => { speaking = false; targetMouth = 0; };
+  utterance.onerror = () => { speaking = false; targetMouth = 0; };
+  speech.cancel();
+  speech.speak(utterance);
 }
+
+/** Set by the app: lets the user turn voice off from outside the page. */
+function setVoiceEnabled(on) {
+  voiceEnabled = on;
+  if (!on && speech !== null) speech.cancel();
+}
+
+window.setPetVoiceEnabled = setVoiceEnabled;
+window.isPetSpeaking = () => speaking;
+
+// Voices load asynchronously in Chromium; resolve the list once it is ready.
+if (speech !== null) speech.onvoiceschanged = () => { pickVoice(); };
 
 /* ---------------- event mapping (mirrors packages/pet-adapter) ---------------- */
 

@@ -46,6 +46,7 @@ export default tseslint.config(
         URL: "readonly",
         URLSearchParams: "readonly",
         EventSource: "readonly",
+        SpeechSynthesisUtterance: "readonly",
         requestAnimationFrame: "readonly",
         setTimeout: "readonly",
         clearTimeout: "readonly",

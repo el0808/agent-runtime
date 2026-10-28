@@ -1,14 +1,21 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-import { RUNNER_TYPES } from "@agent/protocol";
+import { RUNNER_TYPES, RUNTIME_EVENT_TYPES } from "@agent/protocol";
+
+/** Runner ids in declaration order, offered to a decision provider as options. */
+const RUNNER_TYPES_VALUES: readonly RunnerType[] = Object.values(RUNNER_TYPES);
+
+function isRunnerType(value: string): value is RunnerType {
+  return (RUNNER_TYPES_VALUES as readonly string[]).includes(value);
+}
 import type { JsonObject, RunnerType, RuntimeEvent, TaskProfile, TaskState, VerificationResult } from "@agent/protocol";
 import { ContextCompressor, MemoryStore } from "@agent/memory";
 import { ApprovalManager, CompensationRegistry, GuardedToolExecutor, PolicyToolExecutor, RecoveryManager, ToolPermissionPolicy } from "@agent/policy";
-import { BackgroundRunner, DecisionRouter, JevDecisionProvider, MultiAgentRunner, PlannerExecutorVerifierRunner, RunnerRouter, StateGraphRunner, TransactionalRunner, type JevTransport } from "@agent/routing";
+import { BackgroundRunner, DecisionRouter, JevDecisionProvider, MultiAgentRunner, PlannerExecutorVerifierRunner, RunnerRouter, StateGraphRunner, TransactionalRunner, jevTransportFromEnv, type JevTransport } from "@agent/routing";
 import { ReActRunner, providerFromEnv, type ModelProvider, type ProviderSelection } from "@agent/runner";
 import { DeterministicVerifier } from "@agent/verifier";
-import { DeviceIdentityStore, LedgerSyncAdapter, LocalSyncStore, type ImportResult, type SyncBundle } from "@agent/sync";
+import { DeviceIdentityStore, LedgerSyncAdapter, LocalSyncStore, MemorySyncAdapter, type ImportResult, type MemoryImportResult, type SyncBundle } from "@agent/sync";
 import { registerBuiltinTools, ToolRegistry } from "@agent/tools";
 import { TaskLedger } from "@agent/task-ledger";
 import { configFromEnv, resolvePaths, type RuntimeConfig } from "./config.js";
@@ -49,6 +56,7 @@ export class AgentRuntime {
   /** Which model provider was selected and whether it uses real credentials. */
   readonly providerSelection: ProviderSelection;
   private readonly sync: LedgerSyncAdapter;
+  private readonly memorySync: MemorySyncAdapter;
 
   constructor(options: AgentRuntimeOptions = {}) {
     this.config = configFromEnv(options.config ?? {});
@@ -98,18 +106,20 @@ export class AgentRuntime {
       multiAgent: new MultiAgentRunner(this.react, this.ledger, [])
     });
 
+    // An explicit transport wins; otherwise AGENT_JEV_URL enables the service.
+    const jevTransport = options.jevTransport ?? jevTransportFromEnv();
     this.decisions = new DecisionRouter({
       ledger: this.ledger,
       confidenceThreshold: this.config.confidenceThreshold,
       shadowMode: this.config.shadowMode,
-      ...(options.jevTransport === undefined
-        ? {}
-        : { jev: new JevDecisionProvider({ transport: options.jevTransport }) })
+      ...(jevTransport === undefined ? {} : { jev: new JevDecisionProvider({ transport: jevTransport }) })
     });
 
     this.verifier = new DeterministicVerifier(this.ledger);
     const identity = DeviceIdentityStore.loadOrCreate(paths.device);
-    this.sync = new LedgerSyncAdapter(identity, new LocalSyncStore(paths.sync));
+    const syncStore = new LocalSyncStore(paths.sync);
+    this.sync = new LedgerSyncAdapter(identity, syncStore);
+    this.memorySync = new MemorySyncAdapter(identity, syncStore);
 
     if (options.hooks?.onEvent !== undefined) {
       const hook = options.hooks.onEvent;
@@ -130,9 +140,47 @@ export class AgentRuntime {
   }
 
   async *run(taskId: string, failures = 0): AsyncIterable<RuntimeEvent> {
-    const decision = this.router.route(taskId, failures);
-    this.events.emit(this.ledger.getEvents(taskId).at(-1) as RuntimeEvent);
-    for await (const event of this.router.getRunner(decision.runnerType).run(taskId)) {
+    const state = this.ledger.getTask(taskId);
+    if (state === undefined) {
+      throw new Error(`Task ${taskId} was not found`);
+    }
+
+    // Everything appended from here on is new to the caller.
+    const alreadyEmitted = this.ledger.getEvents(taskId).length;
+
+    // The rule router proposes a runner; when Jev is configured it gets a say.
+    const proposed = this.router.route(taskId, failures);
+    const choice = await this.decisions.decide({
+      taskId,
+      goal: state.profile.goal,
+      kind: "runner",
+      options: RUNNER_TYPES_VALUES,
+      risk: "low",
+      failureCount: failures
+    });
+    const selected = isRunnerType(choice.choice) ? choice.choice : proposed.runnerType;
+
+    if (selected !== proposed.runnerType) {
+      this.ledger.appendEvent({
+        eventId: randomUUID(),
+        taskId,
+        type: RUNTIME_EVENT_TYPES.ROUTE_DECIDED,
+        payload: {
+          runnerType: selected,
+          reason: `decision provider ${choice.provider}: ${choice.reason}`,
+          evidence: { proposed: proposed.runnerType, confidence: choice.confidence },
+          confidence: choice.confidence,
+          upgradedFrom: proposed.runnerType
+        }
+      });
+    }
+
+    for (const event of this.ledger.getEvents(taskId).slice(alreadyEmitted)) {
+      this.events.emit(event);
+      yield event;
+    }
+
+    for await (const event of this.router.getRunner(selected).run(taskId)) {
       this.events.emit(event);
       yield event;
     }
@@ -206,6 +254,15 @@ export class AgentRuntime {
 
   importTask(bundle: SyncBundle): ImportResult {
     return this.sync.importBundle(bundle, this.ledger);
+  }
+
+  /** Publishes every memory record visible to this device and returns new ones. */
+  exportMemories(cursor = 0): SyncBundle {
+    return this.memorySync.exportMemories(this.memory.search(""), cursor);
+  }
+
+  importMemories(bundle: SyncBundle): MemoryImportResult {
+    return this.memorySync.importMemories(bundle, this.memory);
   }
 
   close(): void {

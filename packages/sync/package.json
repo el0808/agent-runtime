@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@agent/protocol": "workspace:*",
-    "@agent/task-ledger": "workspace:*"
+    "@agent/task-ledger": "workspace:*",
+    "@agent/memory": "workspace:*"
   }
 }

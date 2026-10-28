@@ -1,3 +1,4 @@
 export * from "./types.js";
 export * from "./mapper.js";
 export * from "./adapters.js";
+export * from "./voice.js";

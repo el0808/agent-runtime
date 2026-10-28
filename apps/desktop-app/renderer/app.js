@@ -17,7 +17,8 @@ const state = {
 /* ---------------- transport ---------------- */
 
 async function api(path, init = {}) {
-  const response = await fetch(new URL(path, GATEWAY), {
+  // GATEWAY is a path prefix, not an origin: resolve against the page origin.
+  const response = await fetch(`${GATEWAY}${path}`, {
     ...init,
     headers: { "content-type": "application/json", ...(init.headers ?? {}) }
   });

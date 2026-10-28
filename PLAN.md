@@ -476,6 +476,37 @@ F. 你的 Runtime + Jev + Verifier + Recovery
 - [x] 完成桌宠资源授权审查；
 - [x] 发布 Demo、架构文档和 Benchmark 报告。
 
+## 7.5 实际状态（2026-10-28 核查）
+
+上面第 7 节的勾选是原始计划的目标清单，**不代表每一项都已按验收标准跑通**。按代码与实测重新核对如下。
+
+### 已实现且经实测
+
+| 能力 | 证据 |
+|---|---|
+| 协议与事件账本 | SQLite 事务、幂等、回放、非法转换回滚，有测试 |
+| 六种 Runner 路由 | `direct`/`pev`/`state-graph`/`background`/`transactional`/`multi-agent` 全部可路由 |
+| 策略与审批 | 工具调用经 `PolicyToolExecutor`；被拒则任务 `paused`；审批从账本恢复 |
+| 检查点与回滚 | `rollback` 恢复最新 checkpoint；`TransactionalRunner` 追加补偿 |
+| 确定性验证 | `DeterministicVerifier` 默认接入 PEV |
+| 记忆与压缩 | 四级作用域、版本、冲突；Runner 内按关键词召回、超预算压缩 |
+| Jev 决策 | HTTP 服务 + 运行时接入；实测可覆盖路由（`authoritative: true`） |
+| 跨设备同步 | 任务事件、检查点、记忆均可导出导入，HMAC 设备令牌 |
+| 语音与口型 | `SystemTtsVoice`（macOS `say` / Linux `espeak-ng`）；浏览器 Web Speech API |
+| 桌宠 | Canvas + Live2D；Electron 窗口实测加载成功 |
+| 桌面 App | 任务、时间线、审批、记忆、工具、状态六个区域 |
+| 真实模型 | `gpt-6.1-sol` 端到端，模型自主调用工具，成本可计算 |
+
+### 未达验收标准
+
+| 项 | 缺口 |
+|---|---|
+| 公开数据集 | 只验证了 `--dataset` 通路，未真正跑 Terminal-Bench / τ-bench / BFCL |
+| A–F 消融 | A–E 五组在需恢复类别上全部失败，成功率相同，无法分离 Jev 与 Verifier 的贡献 |
+| Anthropic | 协议已实现并有单测，未对真实 Anthropic API 验证 |
+| Live2D 资源 | 模型需本地导入，不随仓库分发 |
+| 语音质量 | 接口与驱动已实现，未做真人试听确认 |
+
 ## 8. 最终验收标准
 
 项目达到以下条件后，才认为第一版完成：

@@ -5,7 +5,21 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  "references": [{ "path": "../protocol" }, { "path": "../task-ledger" }],
-  "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts"]
+  "references": [
+    {
+      "path": "../protocol"
+    },
+    {
+      "path": "../task-ledger"
+    },
+    {
+      "path": "../memory"
+    }
+  ],
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "src/**/*.test.ts"
+  ]
 }
