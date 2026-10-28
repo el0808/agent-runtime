@@ -20,8 +20,19 @@ export function extractTaskFeatures(profile: TaskProfile): TaskFeatures {
   const wordCount = goal.length === 0 ? 0 : goal.split(/\s+/u).length;
   const signals: string[] = [];
   const lower = goal.toLowerCase();
-  const stepMatches = lower.match(/\b(first|then|next|finally|step|步骤|然后|接着|最后)\b/gu)?.length ?? 0;
-  const estimatedSteps = Math.max(1, stepMatches + (metadataBoolean(profile.metadata, "estimatedSteps") ? Number(profile.metadata?.estimatedSteps) || 1 : 0));
+  // Count the segments the planner will actually produce. Counting keywords
+  // instead was wrong in both directions: "…, then verify it" is two steps but
+  // has one marker, while "first. second. third." has three markers but is
+  // three steps, not four. Routing decisions depend on this number.
+  const segments = profile.goal
+    .split(/\r?\n|(?<=[.!?])\s+|(?<=[;；])\s*/u)
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+  const declared = metadataBoolean(profile.metadata, "estimatedSteps") ? Number(profile.metadata?.estimatedSteps) || 1 : 0;
+  // Punctuation is not the only way to write steps: "first then next finally"
+  // is four steps in one sentence, so take whichever signal is larger.
+  const markers = profile.goal.toLowerCase().match(/\b(first|then|next|finally|step)\b|然后|接着|最后|步骤/gu)?.length ?? 0;
+  const estimatedSteps = Math.max(1, segments.length, markers, declared);
   const fixedFlow = metadataBoolean(profile.metadata, "fixedFlow") || /\b(workflow|pipeline|state graph|固定流程|审批)\b/u.test(lower);
   const longRunning = metadataBoolean(profile.metadata, "longRunning") || metadataBoolean(profile.metadata, "background") || /\b(long|overnight|background|持续|长任务)\b/u.test(lower);
   const hasExternalSideEffect = metadataBoolean(profile.metadata, "externalSideEffect") || /\b(delete|deploy|send|publish|迁移|删除|部署|发送)\b/u.test(lower);

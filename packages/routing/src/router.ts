@@ -58,14 +58,25 @@ export class RunnerRouter {
     let runnerType: RunnerType = requested;
     let reason = "profile requested runner";
 
-    // A runner the user picked is not a suggestion. Signals may upgrade the
-    // default (direct), but they must not silently replace a deliberate choice:
-    // that is how a multi-agent task used to run as a state graph instead.
-    if (requested !== RUNNER_TYPES.DIRECT) {
+    // A runner the user picked is not a suggestion, direct included. Only a
+    // task left on "auto route" may be re-routed by signals; otherwise choosing
+    // direct on a multi-step goal would still silently become a planner run.
+    const explicit = profile.metadata?.autoRoute === false || profile.metadata?.autoRoute === undefined && requested !== RUNNER_TYPES.DIRECT;
+    if (explicit && requested !== RUNNER_TYPES.DIRECT) {
       const escalated = failures >= 2 && RUNNER_TYPES_VALUES.indexOf(requested) < RUNNER_TYPES_VALUES.indexOf(RUNNER_TYPES.PLANNER_EXECUTOR_VERIFIER);
       return {
         runnerType: requested,
         reason: escalated ? "profile requested runner, escalated by repeated failures" : "profile requested runner",
+        evidence: routeEvidence(features),
+        confidence: 1,
+        features
+      };
+    }
+
+    if (profile.metadata?.autoRoute === false) {
+      return {
+        runnerType: requested,
+        reason: "profile requested runner",
         evidence: routeEvidence(features),
         confidence: 1,
         features

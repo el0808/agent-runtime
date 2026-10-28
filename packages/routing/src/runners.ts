@@ -72,6 +72,42 @@ export interface StateGraphNode {
   readonly run: (taskId: string, ledger: TaskLedger) => string | undefined | Promise<string | undefined>;
 }
 
+/**
+ * The graph a task uses when none is configured: make a checkpoint, work out
+ * the steps, then hand the actual work to the model. Each node is a real
+ * transition, so a run routed here behaves differently from `direct` instead
+ * of being the same loop under a different name.
+ */
+export function defaultStateGraph(plan: Planner = defaultPlanner): readonly StateGraphNode[] {
+  return [
+    {
+      id: "checkpoint",
+      run: (taskId, ledger) => {
+        ledger.createCheckpoint(taskId, { reason: "state-graph entry" });
+        return "plan";
+      }
+    },
+    {
+      id: "plan",
+      run: (taskId, ledger) => {
+        const state = ledger.getTask(taskId);
+        if (state === undefined) {
+          throw new RuntimeError({ code: ERROR_CODES.TASK_NOT_FOUND, message: `Task ${taskId} was not found` });
+        }
+        ledger.appendEvent({
+          eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.PLAN_CREATED,
+          payload: { steps: plan(state.profile), reason: "state-graph plan node" }
+        });
+        return "execute";
+      }
+    },
+    {
+      id: "execute",
+      run: () => undefined
+    }
+  ];
+}
+
 export class StateGraphRunner extends DelegatingRunner {
   private readonly nodes: ReadonlyMap<string, StateGraphNode>;
   private readonly startNode: string;
@@ -92,6 +128,19 @@ export class StateGraphRunner extends DelegatingRunner {
     if (state.status === TASK_STATUSES.PENDING) {
       this.ledger.appendEvent({ eventId: `graph-start-${taskId}`, taskId, type: RUNTIME_EVENT_TYPES.TASK_STARTED, payload: { reason: "state graph" } });
     }
+    // An empty graph is a configuration error, not a reason to throw halfway
+    // through a run: the task would be left stuck in `running` with no way out.
+    // Say so up front, while the caller can still route elsewhere.
+    if (this.nodes.size === 0) {
+      throw new RuntimeError({
+        code: ERROR_CODES.INVALID_INPUT,
+        message: "State graph has no nodes registered; route this task to another runner"
+      });
+    }
+    // Nodes append straight to the ledger, so record where the log ends and
+    // replay what they wrote into the stream: otherwise the checkpoint and plan
+    // a graph produces never reach the UI.
+    const emitted = this.ledger.getEvents(taskId).length;
     // Nodes run before the model: a graph is for flows whose shape the host
     // already knows, so the expensive loop only runs for what is left.
     const steps: string[] = [];
@@ -110,12 +159,11 @@ export class StateGraphRunner extends DelegatingRunner {
       steps.push(current);
       current = instruction;
     }
-    if (steps.length > 0) {
-      yield this.ledger.appendEvent({
-        eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.PLAN_CREATED,
-        payload: { steps, reason: "state graph nodes" }
-      }).event;
+    for (const event of this.ledger.getEvents(taskId).slice(emitted)) {
+      yield event;
     }
+    // The plan node already recorded the steps; emitting again here produced
+    // two plan.created events for one run.
     yield* this.delegate.run(taskId);
   }
 }

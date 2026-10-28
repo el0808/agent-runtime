@@ -31,12 +31,18 @@ export class LedgerSyncAdapter {
   }
 
   importBundle(bundle: SyncBundle, ledger: TaskLedger): ImportResult {
-    const accepted = this.store.append(bundle.records.map((record) => {
+    // A bundle can carry memory as well as tasks. Accepting those here put them
+    // in the shared store under their idempotency key, so a later
+    // importMemories() saw them as already present and imported nothing.
+    const ownRecords = bundle.records.filter((record) => record.entityType !== "memory");
+    const accepted = this.store.append(ownRecords.map((record) => {
       const { eventId, version, idempotencyKey, deviceId, entityType, entityId, occurredAt, payload } = record;
       return { eventId, version, idempotencyKey, deviceId, entityType, entityId, occurredAt, payload };
     }));
     let imported = 0;
-    let skipped = bundle.records.length - accepted.accepted.length - accepted.conflicts.length;
+    let skipped = ownRecords.length - accepted.accepted.length - accepted.conflicts.length
+      // Memory records are not this adapter's business, so they are not skips.
+      + (bundle.records.length - ownRecords.length);
     const events = accepted.accepted.filter((record) => record.entityType === "runtime_event").sort((a, b) => Number((a.payload as JsonObject).sequence ?? 0) - Number((b.payload as JsonObject).sequence ?? 0));
     for (const record of events) {
       const event = record.payload as unknown as RuntimeEvent;

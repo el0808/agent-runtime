@@ -12,7 +12,7 @@ function isRunnerType(value: string): value is RunnerType {
 import type { JsonObject, RunnerType, RuntimeEvent, TaskProfile, TaskState, UserImage, VerificationResult } from "@agent/protocol";
 import { ContextCompressor, MemoryStore } from "@agent/memory";
 import { ApprovalManager, CompensationRegistry, GuardedToolExecutor, PolicyToolExecutor, RecoveryManager, ToolPermissionPolicy } from "@agent/policy";
-import { BackgroundRunner, DecisionRouter, JevDecisionProvider, MultiAgentRunner, PlannerExecutorVerifierRunner, RunnerRouter, StateGraphRunner, TransactionalRunner, jevTransportFromEnv, type JevTransport } from "@agent/routing";
+import { BackgroundRunner, DecisionRouter, JevDecisionProvider, MultiAgentRunner, PlannerExecutorVerifierRunner, RunnerRouter, StateGraphRunner, TransactionalRunner, defaultStateGraph, jevTransportFromEnv, type JevTransport } from "@agent/routing";
 import { ReActRunner, providerFromEnv, type ModelProvider, type ProviderSelection } from "@agent/runner";
 import { DeterministicVerifier } from "@agent/verifier";
 import { DeviceIdentityStore, LedgerSyncAdapter, LocalSyncStore, MemorySyncAdapter, type ImportResult, type MemoryImportResult, type SyncBundle } from "@agent/sync";
@@ -105,7 +105,7 @@ export class AgentRuntime {
       ledger: this.ledger,
       react: this.react,
       planner: new PlannerExecutorVerifierRunner(this.react, this.ledger),
-      stateGraph: new StateGraphRunner(this.react, this.ledger),
+      stateGraph: new StateGraphRunner(this.react, this.ledger, defaultStateGraph()),
       // A detached run keeps going after the caller stops reading events.
       // It drains the ReAct runner directly: calling back into run() would
       // route through this same background runner and hand off again, forever.
