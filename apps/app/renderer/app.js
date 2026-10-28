@@ -848,7 +848,7 @@ function renderUpdate(status) {
   const release = $("update-release");
   if (note === null) return;
 
-  if (typeof status.currentVersion === "string") {
+  if (typeof status.currentVersion === "string" && status.currentVersion !== "") {
     $("update-version").value = status.currentVersion;
   }
   if (status.canCheck === false) {

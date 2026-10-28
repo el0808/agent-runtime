@@ -1,5 +1,12 @@
+import { createRequire } from "node:module";
 import { app } from "electron";
-import { autoUpdater, type UpdateInfo } from "electron-updater";
+import type { UpdateInfo, AppUpdater } from "electron-updater";
+
+// electron-updater is CommonJS. Under ESM a named import of it resolves when
+// Run unpackaged but fails once packed into the app bundle, where the loader
+// cannot detect the named export, so it is required explicitly instead.
+const requireCjs = createRequire(import.meta.url);
+const { autoUpdater } = requireCjs("electron-updater") as { autoUpdater: AppUpdater };
 
 export type UpdateStatus =
   | { readonly state: "idle" }

@@ -23,7 +23,9 @@ function send(channel: string, payload: unknown): void {
 const RELEASE_URL = "https://github.com/el0808/agent-runtime/releases/latest";
 
 const updater = new Updater({
-  onChange: (status: UpdateStatus) => send("update:status", status),
+  // Every push carries the running version: a later event such as an error
+  // does not, and the panel used to blank the field it had already shown.
+  onChange: (status: UpdateStatus) => send("update:status", { ...status, currentVersion: app.getVersion() }),
   onOpenRelease: () => {
     void shell.openExternal(RELEASE_URL);
   }
