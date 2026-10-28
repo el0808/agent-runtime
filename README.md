@@ -2,12 +2,17 @@
 
 本项目是一个本地优先、可验证、可恢复的 Agent Runtime + Harness，目标是让长任务具备明确的状态、权限、检查点、验证和恢复能力，并为 Electron + Live2D 桌宠提供稳定的展示层接口。
 
-Phase 0–9 的代码已全部落地并通过 `lint`、`typecheck`、37 个测试和 `build`。系统已装配为可运行的四端：`apps/runtime`（装配根）、`apps/gateway`（HTTP/SSE/JSON-RPC）、`apps/cli`（客户端）、`apps/desktop-pet`（Canvas 桌宠），另有 `apps/jev-service`、`apps/sync-service`、`apps/benchmark-runner` 三个可选服务。
+Phase 0–9 的代码已全部落地并通过 `lint`、`typecheck`、59 个测试和 `build`。系统装配为可运行的多个入口：`apps/app`（macOS 桌面应用，主要入口）、`apps/runtime`（装配根）、`apps/gateway`（HTTP/SSE/JSON-RPC）、`apps/cli`（命令行客户端）、`apps/desktop-pet`（Canvas 桌宠），另有 `apps/jev-service`、`apps/sync-service`、`apps/benchmark-runner` 三个可选服务。
 
-需要明确的两点边界：
+已接入的部分：
 
-- **模型 Provider 目前只有 `FakeProvider`**。真实厂商适配器是接口层预留，没有接入，因此 Benchmark 成本恒为 `$0.00`。
-- **Electron 二进制在当前环境无法下载**，桌宠以浏览器渲染层运行（同一套渲染代码，Electron 为可选壳）。Live2D 模型与语音资源未引入，需单独做授权审查。
+- **真实模型**：`OpenAIChatProvider` 与 `AnthropicProvider` 走流式协议，支持工具调用、图片输入、用量与成本统计。通过 `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` 与环境变量配置，密钥不入库。
+- **Electron 桌面应用**可用，界面为浅色，工具调用、审批、上下文用量与记忆都在界面上可见。
+
+仍有明确边界的部分：
+
+- **`apps/jev-service` 不是真正的 Jev**。它是一个自建的打分服务，复用 Jev 的传输协议形状；Jev 本身闭源，本项目没有引入它。
+- **Live2D 模型与语音资源未内置**，桌宠以 Canvas 渲染层运行，素材需单独授权。
 
 ## 目标
 
@@ -132,7 +137,16 @@ pnpm test
 pnpm build
 ```
 
-启动控制面与桌宠（两个终端）：
+启动桌面应用（主要的开发与使用方式）：
+
+```bash
+pnpm --filter @agent/app build
+pnpm --filter @agent/app start
+```
+
+首次打开后按 `⌘,` 设置 Provider、模型与 API Key。Key 存入 macOS Keychain，不写入仓库。工作目录也在同一面板里选择，agent 的文件与命令工具以它为根。
+
+启动控制面与桌宠（两个终端，可选，用于 HTTP 接口与桌宠展示）：
 
 ```bash
 node apps/gateway/dist/main.js --port 4317
@@ -155,6 +169,13 @@ node apps/cli/dist/main.js run "读取 README 并总结要点"
 | Jev 决策 | `node apps/jev-service/dist/main.js --port 4318` | 通过 `AGENT_JEV_URL=http://127.0.0.1:4318` 接入 |
 | 同步 | `node apps/sync-service/dist/main.js --port 4319` | 设备注册与增量同步 |
 | Benchmark | `pnpm benchmark` | 真实执行 A–F，写入 `reports/` |
+
+针对真实模型的基准测试（需要 `OPENAI_API_KEY`，报告 `pass@1` 与 `pass^k`，每项由文件系统的真实副作用校验，不采信模型自称成功）：
+
+```bash
+export OPENAI_API_KEY=... OPENAI_BASE_URL=https://api.example.com/v1 AGENT_MODEL=your-model
+node --experimental-strip-types packages/benchmark/dist/live-run.js --repeats 3
+```
 
 常用脚本：
 
