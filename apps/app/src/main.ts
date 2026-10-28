@@ -149,6 +149,8 @@ ipcMain.handle("runtime:task", (_event, taskId: string) => host.getTask(taskId))
 
 ipcMain.handle("runtime:events", (_event, taskId: string) => host.getEvents(taskId));
 
+ipcMain.handle("runtime:delete", (_event, taskId: string) => host.deleteTask(taskId));
+
 ipcMain.handle("runtime:run", (_event, goal: string, images: readonly { mediaType: string; data: string }[], runnerType?: RunnerType) => host.createAndRun(goal, images ?? [], runnerType));
 
 ipcMain.handle("runtime:send", (_event, taskId: string, text: string, images: readonly { mediaType: string; data: string }[]) => host.sendMessage(taskId, text, images ?? []));

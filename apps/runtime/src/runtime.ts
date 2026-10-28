@@ -254,6 +254,24 @@ export class AgentRuntime {
     return this.ledger.getEvents(taskId);
   }
 
+  /**
+   * Deletes a task and its history. A running task is refused: its next append
+   * would fail against a row that no longer exists.
+   */
+  deleteTask(taskId: string): boolean {
+    const state = this.ledger.getTask(taskId);
+    if (state === undefined) {
+      throw new RuntimeError({ code: ERROR_CODES.TASK_NOT_FOUND, message: `Task ${taskId} was not found` });
+    }
+    if (state.status === TASK_STATUSES.RUNNING || state.status === TASK_STATUSES.PENDING) {
+      throw new RuntimeError({
+        code: ERROR_CODES.INVALID_STATE_TRANSITION,
+        message: `Task ${taskId} is ${state.status}; stop it before deleting`
+      });
+    }
+    return this.ledger.deleteTask(taskId);
+  }
+
   replay(taskId: string): TaskState {
     return this.ledger.replayTask(taskId);
   }

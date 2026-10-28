@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld("agent", {
     tasks: () => ipcRenderer.invoke("runtime:tasks"),
     task: (taskId) => ipcRenderer.invoke("runtime:task", taskId),
     events: (taskId) => ipcRenderer.invoke("runtime:events", taskId),
+    remove: (taskId) => ipcRenderer.invoke("runtime:delete", taskId),
     run: (goal, images, runnerType) => ipcRenderer.invoke("runtime:run", goal, images ?? [], runnerType),
     send: (taskId, text, images) => ipcRenderer.invoke("runtime:send", taskId, text, images ?? []),
     approvals: (taskId) => ipcRenderer.invoke("runtime:approvals", taskId),

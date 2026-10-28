@@ -218,6 +218,21 @@ export class RuntimeHost {
     return state === undefined ? undefined : summaryOf(state, runtime.getEvents(taskId), runtime.config.contextTokenBudget);
   }
 
+  deleteTask(taskId: string): boolean {
+    const removed = this.require().deleteTask(taskId);
+    if (removed) {
+      this.options.emit({
+        eventId: randomUUID(),
+        taskId,
+        sequence: 0,
+        occurredAt: new Date().toISOString(),
+        type: "task.cancelled",
+        payload: { reason: "deleted" }
+      } as RuntimeEvent);
+    }
+    return removed;
+  }
+
   getEvents(taskId: string): readonly RuntimeEvent[] {
     return this.require().getEvents(taskId);
   }

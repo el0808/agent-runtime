@@ -104,6 +104,17 @@ function renderConversations() {
     const cost = fmtCost(task.costUsd);
     if (cost) row2.append(el("span", "", cost));
     row.append(row1, row2);
+
+    // Deleting is a row action, so it lives on the row and stops the click
+    // from opening the conversation it is about to remove.
+    const remove = el("button", "conv-delete", "×");
+    remove.title = "Delete this conversation";
+    remove.onclick = (event) => {
+      event.stopPropagation();
+      void deleteConversation(task.taskId);
+    };
+    row.append(remove);
+
     row.onclick = () => void openTask(task.taskId);
     list.append(row);
   }
@@ -393,6 +404,12 @@ function applyLiveEvent(event) {
     return;
   }
 
+  if (event.type === "task.started" || event.type === "session.started") {
+    state.running = true;
+    $("send").disabled = true;
+    $("send").textContent = "Working…";
+  }
+
   if (event.type === "model.delta") {
     const root = threadRoot();
     root.querySelector(".turn.thinking")?.remove();
@@ -574,10 +591,39 @@ async function resyncThread() {
   scrollToBottom();
 }
 
+/** Deletes a conversation after confirming, since the history is not recoverable. */
+async function deleteConversation(taskId) {
+  const task = state.tasks.find((item) => item.taskId === taskId);
+  const label = task?.goal.slice(0, 60) ?? "this conversation";
+  if (!window.confirm(`Delete "${label}"? Its events and checkpoints are removed with it.`)) {
+    return;
+  }
+  try {
+    await api.runtime.remove(taskId);
+  } catch (error) {
+    window.alert(`Could not delete: ${error?.message ?? error}`);
+    return;
+  }
+  if (state.current === taskId) {
+    state.current = null;
+    state.live.clear();
+    renderWelcome();
+    $("conv-title").textContent = "New conversation";
+    $("pane-activity").innerHTML = '<div class="empty-hint">Run a task to see its state, cost and verification.</div>';
+    $("pane-approvals").innerHTML = '<div class="empty-hint">Nothing waiting.</div>';
+  }
+  await refreshTasks();
+}
+
 async function refreshTasks() {
   state.tasks = await api.runtime.tasks();
   const current = state.tasks.find((task) => task.taskId === state.current);
   state.running = current?.status === "running" || current?.status === "pending";
+  // Disabling Send while a run is in flight makes the refusal visible instead
+  // of turning a click into a whole new conversation.
+  const busy = state.sending || state.running;
+  $("send").disabled = busy;
+  $("send").textContent = state.running ? "Working…" : "Send";
   renderConversations();
 }
 
@@ -591,7 +637,13 @@ function updateActionButtons() {
 /** Cancelled conversations stay closed; every other status can take a follow-up. */
 function canContinue() {
   const task = state.tasks.find((item) => item.taskId === state.current);
-  return task !== undefined && task.status !== "cancelled" && !state.running;
+  return task !== undefined && task.status !== "cancelled";
+}
+
+/** Puts the composer hint back after a temporary message. */
+function restoreHint() {
+  const enterSends = state.settings?.sendOnEnter !== false;
+  $("hint").textContent = enterSends ? "↵ send · ⇧↵ newline · paste an image" : "⌘↵ send · ↵ newline · paste an image";
 }
 
 /** Reads a picked or pasted image into the pending attachment list. */
@@ -663,6 +715,14 @@ function appendOptimisticUserTurn(text, images = []) {
 async function send() {
   const goal = $("goal").value.trim();
   if ((goal === "" && state.attachments.length === 0) || state.sending) return;
+  // A run in progress cannot take a follow-up: appending one would flip the
+  // task back to pending mid-run. Refuse instead of silently opening a new
+  // conversation, which is what used to happen.
+  if (state.running) {
+    $("hint").textContent = "Still working — wait for it to finish, or press Stop.";
+    setTimeout(() => restoreHint(), 4000);
+    return;
+  }
   state.sending = true;
   $("send").disabled = true;
   $("send").textContent = "Sending…";
@@ -683,6 +743,11 @@ async function send() {
     }
     $("goal").value = "";
     autoGrow();
+    // The run is in flight from here, but task.completed is what refreshes the
+    // list, so mark it now or Send stays enabled while work is happening.
+    state.running = true;
+    $("send").disabled = true;
+    $("send").textContent = "Working…";
     await refreshTasks();
     if (!continued) {
       await openTask(state.current);
@@ -692,8 +757,12 @@ async function send() {
     }
   } finally {
     state.sending = false;
-    $("send").disabled = false;
-    $("send").textContent = "Send";
+    // Leave the button disabled if the run is still going; refreshTasks owns
+    // the enabled state from here.
+    if (!state.running) {
+      $("send").disabled = false;
+      $("send").textContent = "Send";
+    }
   }
 }
 

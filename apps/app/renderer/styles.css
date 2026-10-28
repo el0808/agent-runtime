@@ -358,6 +358,28 @@ button.icon { padding: 5px 7px; }
 .wl-item.tool::before { background: var(--tool); }
 .wl-item.think::before { background: var(--fg-faint); }
 
+/* Row delete: hidden until the row is hovered, so the list stays calm. */
+.conv { position: relative; }
+.conv-delete {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--fg-faint);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .12s;
+}
+.conv:hover .conv-delete { opacity: 1; }
+.conv-delete:hover { background: var(--err); color: #fff; }
+
 /* A run of steps collapses to its newest few, so a busy turn stays readable. */
 .wl-group { position: relative; }
 .wl-group.collapsed > .wl-item:not(:nth-last-child(-n+3)) { display: none; }

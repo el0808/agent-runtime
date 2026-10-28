@@ -152,6 +152,17 @@ export class TaskLedger {
       .map((row) => parseJson<TaskState>((row as unknown as TaskRow).state_json));
   }
 
+  /**
+   * Removes a task and everything recorded for it. Events and checkpoints go
+   * with it through ON DELETE CASCADE, so the ledger cannot keep orphan rows.
+   */
+  deleteTask(taskId: string): boolean {
+    return this.transaction(() => {
+      const result = this.db.prepare("DELETE FROM tasks WHERE task_id = ?").run(taskId);
+      return Number(result.changes) > 0;
+    });
+  }
+
   getTask(taskId: string): TaskState | undefined {
     const row = this.readTaskRow(taskId);
     return row === undefined ? undefined : parseJson<TaskState>(row.state_json);
