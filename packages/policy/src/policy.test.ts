@@ -24,7 +24,7 @@ describe("policy and recovery", () => {
     expect(classifyCommandRisk("deploy production")).toBe("high");
     const { dir, ledger } = await setup();
     const registry = new ToolRegistry();
-    registry.register({ name: "write_file", description: "write", execute: () => ({ ok: true }) });
+    registry.register({ name: "write_file", description: "write", parameters: { type: "object" }, execute: () => ({ ok: true }) });
     const approvals = new ApprovalManager();
     const executor = new GuardedToolExecutor(registry, new ToolPermissionPolicy(), approvals, ledger);
     const call = { callId: "c1", toolName: "write_file", input: { path: "a", content: "b" }, status: "requested" as const };

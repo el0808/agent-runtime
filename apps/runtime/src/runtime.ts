@@ -6,7 +6,7 @@ import type { JsonObject, RunnerType, RuntimeEvent, TaskProfile, TaskState, Veri
 import { ContextCompressor, MemoryStore } from "@agent/memory";
 import { ApprovalManager, CompensationRegistry, GuardedToolExecutor, PolicyToolExecutor, RecoveryManager, ToolPermissionPolicy } from "@agent/policy";
 import { BackgroundRunner, DecisionRouter, JevDecisionProvider, MultiAgentRunner, PlannerExecutorVerifierRunner, RunnerRouter, StateGraphRunner, TransactionalRunner, type JevTransport } from "@agent/routing";
-import { FakeProvider, ReActRunner, type ModelProvider } from "@agent/runner";
+import { ReActRunner, providerFromEnv, type ModelProvider, type ProviderSelection } from "@agent/runner";
 import { DeterministicVerifier } from "@agent/verifier";
 import { DeviceIdentityStore, LedgerSyncAdapter, LocalSyncStore, type ImportResult, type SyncBundle } from "@agent/sync";
 import { registerBuiltinTools, ToolRegistry } from "@agent/tools";
@@ -46,10 +46,15 @@ export class AgentRuntime {
   readonly verifier: DeterministicVerifier;
   readonly tools: ToolRegistry;
   readonly react: ReActRunner;
+  /** Which model provider was selected and whether it uses real credentials. */
+  readonly providerSelection: ProviderSelection;
   private readonly sync: LedgerSyncAdapter;
 
   constructor(options: AgentRuntimeOptions = {}) {
     this.config = configFromEnv(options.config ?? {});
+    this.providerSelection = options.provider === undefined
+      ? providerFromEnv()
+      : { provider: options.provider, live: true, reason: `injected:${options.provider.name}` };
     const paths = resolvePaths(this.config);
     mkdirSync(path.dirname(paths.ledger), { recursive: true });
     this.ledger = new TaskLedger({ filename: paths.ledger });
@@ -71,7 +76,7 @@ export class AgentRuntime {
 
     this.react = new ReActRunner({
       ledger: this.ledger,
-      provider: options.provider ?? new FakeProvider(),
+      provider: options.provider ?? this.providerSelection.provider,
       tools: this.tools,
       workspaceRoot: this.config.workspaceRoot,
       toolTimeoutMs: this.config.toolTimeoutMs,
@@ -79,6 +84,7 @@ export class AgentRuntime {
       memory: this.memory,
       compressor: new ContextCompressor(),
       contextTokenBudget: this.config.contextTokenBudget,
+      ...(this.config.pricing === undefined ? {} : { pricing: this.config.pricing }),
       memoryScope: { scope: "project" }
     });
 

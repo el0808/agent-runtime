@@ -54,6 +54,9 @@
     },
     {
       "path": "apps/desktop-pet"
+    },
+    {
+      "path": "apps/desktop-app"
     }
   ]
 }

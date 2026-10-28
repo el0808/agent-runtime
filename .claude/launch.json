@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "agent-desktop-app",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["apps/desktop-app/dist/main.js", "--port", "4402", "--gateway", "http://127.0.0.1:4401"],
+      "port": 4402
+    }
+  ]
+}

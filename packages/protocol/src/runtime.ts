@@ -198,11 +198,18 @@ export interface ModelDeltaPayload {
   text: string;
 }
 
+export interface ModelUsage {
+  promptTokens: number;
+  completionTokens: number;
+}
+
 export interface ModelCompletedPayload {
   sessionId: string;
   requestId: string;
   text: string;
   finishReason: "stop" | "tool_call" | "length";
+  usage?: ModelUsage;
+  costUsd?: number;
 }
 
 export interface ModelFailedPayload {

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>Agent Runtime</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="brand">
+      <span class="dot" id="conn-dot"></span>
+      <span>Agent Runtime</span>
+    </div>
+
+    <div id="top">
+      <span class="badge" id="provider-badge">provider…</span>
+      <span class="badge" id="model-badge">model…</span>
+      <span class="spacer"></span>
+      <button id="btn-verify" class="sm" disabled>Verify</button>
+      <button id="btn-rollback" class="sm" disabled>Rollback</button>
+      <button id="btn-pause" class="sm" disabled>Pause</button>
+      <button id="btn-cancel" class="sm err" disabled>Cancel</button>
+    </div>
+
+    <aside id="side">
+      <div class="panel-head">
+        <span>Tasks</span>
+        <span class="count" id="task-count">0</span>
+      </div>
+      <div id="task-list"></div>
+    </aside>
+
+    <main id="main">
+      <div id="composer">
+        <textarea id="goal" rows="1" placeholder="Describe a task…  (⌘↵ to run)"></textarea>
+        <select id="runner" title="Runner type">
+          <option value="">auto (router)</option>
+          <option value="direct">direct</option>
+          <option value="planner-executor-verifier">planner-executor-verifier</option>
+          <option value="state-graph">state-graph</option>
+          <option value="background">background</option>
+          <option value="transactional">transactional</option>
+          <option value="multi-agent">multi-agent</option>
+        </select>
+        <button id="btn-run" class="primary">Run</button>
+      </div>
+      <div id="timeline">
+        <div class="empty">No task selected.<br />Describe a task above, or pick one from the left.</div>
+      </div>
+    </main>
+
+    <aside id="insp">
+      <div class="tabs" id="tabs">
+        <button data-tab="approvals" class="active">Approvals</button>
+        <button data-tab="memory">Memory</button>
+        <button data-tab="tools">Tools</button>
+        <button data-tab="state">State</button>
+      </div>
+
+      <div class="tab-body" data-panel="approvals" id="panel-approvals">
+        <div class="hint">Pending tool approvals appear here. Nothing runs until you decide.</div>
+      </div>
+
+      <div class="tab-body" data-panel="memory" id="panel-memory" hidden>
+        <div class="card">
+          <div class="title"><b>Add memory</b></div>
+          <textarea id="mem-key" class="in" rows="1" placeholder="key"></textarea>
+          <textarea id="mem-content" class="in" rows="2" placeholder="content"></textarea>
+          <div class="actions">
+            <select id="mem-scope">
+              <option value="project">project</option>
+              <option value="global">global</option>
+              <option value="task">task</option>
+              <option value="session">session</option>
+            </select>
+            <button class="sm primary" id="btn-mem-add">Save</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="title"><b>Search</b></div>
+          <div class="actions">
+            <input id="mem-q" class="in" placeholder="query" />
+            <button class="sm" id="btn-mem-search">Find</button>
+          </div>
+        </div>
+        <div id="mem-results"></div>
+      </div>
+
+      <div class="tab-body" data-panel="tools" id="panel-tools" hidden></div>
+
+      <div class="tab-body" data-panel="state" id="panel-state" hidden>
+        <div class="hint">Select a task to inspect its state.</div>
+      </div>
+    </aside>
+
+    <footer id="status">
+      <span id="status-task">no task</span>
+      <span id="status-seq"></span>
+      <span class="spacer"></span>
+      <span id="status-events">0 events</span>
+    </footer>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

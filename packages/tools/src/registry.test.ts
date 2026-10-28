@@ -5,7 +5,7 @@ import { ToolRegistry } from "./registry.js";
 describe("ToolRegistry", () => {
   it("executes a registered tool and preserves output", async () => {
     const registry = new ToolRegistry();
-    registry.register({ name: "echo", description: "echo", execute: (input) => input });
+    registry.register({ name: "echo", description: "echo", parameters: { type: "object" }, execute: (input) => input });
     await expect(registry.execute("echo", { value: "ok" })).resolves.toMatchObject({ status: "succeeded", output: { value: "ok" } });
   });
 
@@ -14,6 +14,7 @@ describe("ToolRegistry", () => {
     registry.register({
       name: "wait",
       description: "wait",
+      parameters: { type: "object" },
       execute: (_input, context) => new Promise<string>((resolve) => {
         const timer = setTimeout(() => resolve("done"), 100);
         context.signal.addEventListener("abort", () => clearTimeout(timer), { once: true });
@@ -28,7 +29,7 @@ describe("ToolRegistry", () => {
 
   it("rejects duplicate and unknown tools", () => {
     const registry = new ToolRegistry();
-    registry.register({ name: "echo", description: "echo", execute: (input) => input });
+    registry.register({ name: "echo", description: "echo", parameters: { type: "object" }, execute: (input) => input });
     expect(() => registry.register({ name: "echo", description: "again", execute: (input) => input })).toThrow(RuntimeError);
     expect(() => registry.get("missing")).toThrow(RuntimeError);
   });

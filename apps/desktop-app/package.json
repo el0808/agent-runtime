@@ -1,0 +1,18 @@
+{
+  "name": "@agent/desktop-app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "agent-desktop": "./dist/main.js"
+  },
+  "scripts": {
+    "start": "node dist/main.js",
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty false",
+    "import-live2d": "node scripts/import-live2d.mjs"
+  },
+  "dependencies": {
+    "@agent/pet-adapter": "workspace:*"
+  }
+}

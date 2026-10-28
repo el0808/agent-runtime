@@ -10,6 +10,8 @@ export interface RuntimeConfig {
   readonly toolTimeoutMs: number;
   readonly contextTokenBudget: number;
   readonly jevUrl?: string;
+  /** USD per 1M tokens; only used to report cost, never to gate execution. */
+  readonly pricing?: { readonly inputPerMillion: number; readonly outputPerMillion: number };
 }
 
 export const DEFAULT_CONFIG: RuntimeConfig = {
@@ -47,6 +49,12 @@ export function configFromEnv(overrides: Partial<RuntimeConfig> = {}): RuntimeCo
     ...(env.AGENT_STORAGE_DIR === undefined ? {} : { storageDir: env.AGENT_STORAGE_DIR }),
     ...(env.AGENT_WORKSPACE_ROOT === undefined ? {} : { workspaceRoot: env.AGENT_WORKSPACE_ROOT }),
     ...(env.AGENT_JEV_URL === undefined ? {} : { jevUrl: env.AGENT_JEV_URL }),
-    ...(env.AGENT_AUTO_APPROVE_MEDIUM === undefined ? {} : { autoApproveMedium: env.AGENT_AUTO_APPROVE_MEDIUM === "1" })
+    ...(env.AGENT_AUTO_APPROVE_MEDIUM === undefined ? {} : { autoApproveMedium: env.AGENT_AUTO_APPROVE_MEDIUM === "1" }),
+    ...(env.AGENT_INPUT_PRICE === undefined ? {} : {
+      pricing: {
+        inputPerMillion: Number(env.AGENT_INPUT_PRICE),
+        outputPerMillion: Number(env.AGENT_OUTPUT_PRICE ?? "0")
+      }
+    })
   };
 }

@@ -12,3 +12,7 @@ storage/artifacts/*
 storage/checkpoints/*
 !storage/artifacts/.gitkeep
 !storage/checkpoints/.gitkeep
+
+# Live2D model assets are large and separately licensed; import them locally.
+apps/desktop-app/renderer/models/
+apps/desktop-app/renderer/live2d-bundle.js

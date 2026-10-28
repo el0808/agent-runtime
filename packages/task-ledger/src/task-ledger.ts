@@ -143,6 +143,15 @@ export class TaskLedger {
     });
   }
 
+  /** Most recently updated tasks first, for list views in clients. */
+  listTasks(limit = 50): TaskState[] {
+    const bounded = Number.isInteger(limit) && limit > 0 ? Math.min(limit, 500) : 50;
+    return this.db
+      .prepare("SELECT task_id, profile_json, state_json, created_at, updated_at FROM tasks ORDER BY updated_at DESC LIMIT ?")
+      .all(bounded)
+      .map((row) => parseJson<TaskState>((row as unknown as TaskRow).state_json));
+  }
+
   getTask(taskId: string): TaskState | undefined {
     const row = this.readTaskRow(taskId);
     return row === undefined ? undefined : parseJson<TaskState>(row.state_json);

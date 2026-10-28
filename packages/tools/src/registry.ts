@@ -15,6 +15,8 @@ export type ToolHandler = (
 export interface ToolDefinition {
   readonly name: string;
   readonly description: string;
+  /** JSON Schema for the tool input, sent to the model verbatim. */
+  readonly parameters: JsonObject;
   readonly execute: ToolHandler;
   readonly validate?: (input: JsonObject) => void;
 }

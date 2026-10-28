@@ -1,25 +1,45 @@
 import type { JsonObject } from "@agent/protocol";
 
+/** A tool call carried on an assistant message, as required by every chat API. */
+export interface AssistantToolCall {
+  readonly callId: string;
+  readonly toolName: string;
+  readonly input: JsonObject;
+}
+
 export interface ChatMessage {
   readonly role: "system" | "user" | "assistant" | "tool";
   readonly content: string;
+  /** Set on `tool` messages: which assistant tool call this responds to. */
   readonly toolCallId?: string;
+  /** Set on `assistant` messages that requested tools. */
+  readonly toolCalls?: readonly AssistantToolCall[];
 }
 
 export interface ProviderTool {
   readonly name: string;
   readonly description: string;
+  /** JSON Schema for the tool input. Required by OpenAI, Anthropic and Gemini. */
+  readonly parameters: JsonObject;
+}
+
+export interface ModelUsage {
+  readonly promptTokens: number;
+  readonly completionTokens: number;
 }
 
 export interface ModelRequest {
   readonly model: string;
   readonly messages: readonly ChatMessage[];
   readonly tools: readonly ProviderTool[];
+  readonly temperature?: number;
+  readonly maxTokens?: number;
 }
 
 export type ModelStreamEvent =
   | { readonly type: "delta"; readonly text: string }
   | { readonly type: "tool_call"; readonly callId: string; readonly toolName: string; readonly input: JsonObject }
+  | { readonly type: "usage"; readonly usage: ModelUsage }
   | { readonly type: "completed"; readonly finishReason: "stop" | "tool_call" | "length" };
 
 export interface ModelProvider {
@@ -27,6 +47,9 @@ export interface ModelProvider {
   readonly model: string;
   chat(request: ModelRequest, signal: AbortSignal): AsyncIterable<ModelStreamEvent>;
 }
+
+/** Empty object schema, used by tools that take no arguments. */
+export const EMPTY_PARAMETERS: JsonObject = { type: "object", properties: {}, additionalProperties: false };
 
 export interface FakeTurn {
   readonly events: readonly ModelStreamEvent[];

@@ -11,7 +11,8 @@ import type {
 } from "@agent/protocol";
 import type { TaskLedger } from "@agent/task-ledger";
 import type { ToolExecutionOptions, ToolExecutionResult, ToolRegistry } from "@agent/tools";
-import type { ChatMessage, ModelProvider } from "./provider.js";
+import type { AssistantToolCall, ChatMessage, ModelProvider, ModelUsage } from "./provider.js";
+import { rebuildConversation } from "./conversation.js";
 
 export interface ToolExecutor {
   execute(name: string, input: JsonObject, options: ToolExecutionOptions): Promise<ToolExecutionResult>;
@@ -53,6 +54,11 @@ export interface ReActRunnerOptions {
   readonly compressor?: ContextCompressor;
   readonly contextTokenBudget?: number;
   readonly memoryScope?: { readonly scope: "global" | "project" | "task" | "session"; readonly scopeId?: string };
+  /** Model call retries for transient failures (429/5xx). Defaults to 2. */
+  readonly modelRetries?: number;
+  readonly modelRetryDelayMs?: number;
+  /** Prices per 1M tokens, used to report cost per task. */
+  readonly pricing?: { readonly inputPerMillion: number; readonly outputPerMillion: number };
 }
 
 interface ActiveRun {
@@ -72,12 +78,58 @@ export function failure(error: unknown): TaskFailure {
   return { code: ERROR_CODES.INTERNAL, message: String(error), retryable: true };
 }
 
+const STOP_WORDS = new Set([
+  "the", "and", "for", "with", "that", "this", "from", "into", "your", "please",
+  "a", "an", "to", "of", "in", "on", "is", "it", "me", "my", "we", "you",
+  "请", "帮我", "一下", "并", "的", "了", "和", "在", "把"
+]);
+
+/** Splits a goal into searchable terms: latin words longer than 2 chars and CJK bigrams. */
+export function keywordsOf(goal: string): string[] {
+  const terms = new Set<string>();
+  for (const word of goal.toLowerCase().match(/[a-z0-9_]{3,}/gu) ?? []) {
+    if (!STOP_WORDS.has(word)) {
+      terms.add(word);
+    }
+  }
+  for (const run of goal.match(/[一-鿿]{2,}/gu) ?? []) {
+    for (let index = 0; index + 1 < run.length; index += 1) {
+      const bigram = run.slice(index, index + 2);
+      if (!STOP_WORDS.has(bigram)) {
+        terms.add(bigram);
+      }
+    }
+  }
+  return [...terms].slice(0, 8);
+}
+
 function estimateTokens(messages: readonly ChatMessage[]): number {
   return messages.reduce((sum, message) => sum + Math.max(1, Math.ceil(message.content.length / 4)), 0);
 }
 
 function eventInput<T extends RuntimeEventInput>(input: T): T {
   return input;
+}
+
+/**
+ * Index where the trailing assistant-with-tool-calls / tool-results block starts,
+ * or -1 when the last message needs no protection. Chat APIs reject tool results
+ * whose originating assistant turn was removed.
+ */
+function trailingToolExchangeStart(messages: readonly ChatMessage[]): number {
+  let index = messages.length - 1;
+  const isTool = (position: number): boolean => messages[position]?.role === "tool";
+  while (index >= 0 && isTool(index)) {
+    index -= 1;
+  }
+  if (index === messages.length - 1) {
+    return -1;
+  }
+  const assistant = messages[index];
+  if (assistant?.role === "assistant" && (assistant.toolCalls?.length ?? 0) > 0) {
+    return index;
+  }
+  return -1;
 }
 
 function lastAssistantText(messages: readonly ChatMessage[]): string {
@@ -103,6 +155,9 @@ export class ReActRunner implements Runner {
   private readonly compressor: ContextCompressor | undefined;
   private readonly contextTokenBudget: number;
   private readonly memoryScope: ReActRunnerOptions["memoryScope"];
+  private readonly modelRetries: number;
+  private readonly modelRetryDelayMs: number;
+  private readonly pricing: ReActRunnerOptions["pricing"];
 
   constructor(options: ReActRunnerOptions) {
     this.ledger = options.ledger;
@@ -116,6 +171,9 @@ export class ReActRunner implements Runner {
     this.compressor = options.compressor;
     this.contextTokenBudget = options.contextTokenBudget ?? 8_000;
     this.memoryScope = options.memoryScope;
+    this.modelRetries = options.modelRetries ?? 2;
+    this.modelRetryDelayMs = options.modelRetryDelayMs ?? 500;
+    this.pricing = options.pricing;
   }
 
   async *run(taskId: string): AsyncIterable<RuntimeEvent> {
@@ -160,9 +218,11 @@ export class ReActRunner implements Runner {
       }
 
       if (plan.length === 0) {
+        // A resumed or retried task continues its conversation instead of
+        // starting over: the history is rebuilt from the event log.
         const messages: ChatMessage[] = [
           ...baseMessages,
-          { role: "user", content: task.profile.goal }
+          ...rebuildConversation(this.ledger.getEvents(taskId), task.profile.goal)
         ];
         const outcome = yield* this.runTurns(taskId, sessionId, controller, messages);
         if (outcome === "completed") {
@@ -201,6 +261,11 @@ export class ReActRunner implements Runner {
 
   private *finishAborted(taskId: string, sessionId: string): Generator<RuntimeEvent> {
     const latest = this.ledger.getTask(taskId);
+    // The task may already be terminal: failTask ran, or a caller cancelled it.
+    if (latest?.status === TASK_STATUSES.FAILED) {
+      yield this.append(eventInput({ eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.SESSION_ENDED, payload: { sessionId, status: "failed" } }));
+      return;
+    }
     const endingStatus = latest?.status === TASK_STATUSES.PAUSED ? "paused" : latest?.status === TASK_STATUSES.CANCELLED ? "cancelled" : "failed";
     if (endingStatus === "failed") {
       yield* this.failTask(taskId, sessionId, { code: ERROR_CODES.INTERNAL, message: "Maximum turns reached or run aborted", retryable: true });
@@ -214,6 +279,12 @@ export class ReActRunner implements Runner {
     controller: AbortController,
     messages: ChatMessage[]
   ): AsyncGenerator<RuntimeEvent, "completed" | "aborted"> {
+    const toolSchemas = this.tools.list().map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters
+    }));
+
     for (let turn = 1; turn <= this.maxTurns; turn += 1) {
       if (controller.signal.aborted) {
         return "aborted";
@@ -225,34 +296,86 @@ export class ReActRunner implements Runner {
       }));
       const deltas: string[] = [];
       const toolCalls: ToolCall[] = [];
+      let usage: ModelUsage | undefined;
       let finishReason: ModelCompletedPayload["finishReason"] = "stop";
-      try {
-        for await (const streamEvent of this.provider.chat({
-          model: this.provider.model,
-          messages,
-          tools: this.tools.list().map((tool) => ({ name: tool.name, description: tool.description }))
-        }, controller.signal)) {
-          if (streamEvent.type === "delta") {
-            deltas.push(streamEvent.text);
-            yield this.append(eventInput({ eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.MODEL_DELTA, payload: { sessionId, requestId, text: streamEvent.text } }));
-          } else if (streamEvent.type === "tool_call") {
-            finishReason = "tool_call";
-            toolCalls.push({ callId: streamEvent.callId, toolName: streamEvent.toolName, input: streamEvent.input, status: "requested", startedAt: new Date().toISOString() });
-          } else {
-            finishReason = streamEvent.finishReason;
+      let attempt = 0;
+      let lastError: unknown;
+      let streamed = false;
+
+      while (attempt <= this.modelRetries) {
+        attempt += 1;
+        deltas.length = 0;
+        toolCalls.length = 0;
+        streamed = false;
+        try {
+          for await (const streamEvent of this.provider.chat({
+            model: this.provider.model,
+            messages,
+            tools: toolSchemas
+          }, controller.signal)) {
+            streamed = true;
+            if (streamEvent.type === "delta") {
+              deltas.push(streamEvent.text);
+              yield this.append(eventInput({ eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.MODEL_DELTA, payload: { sessionId, requestId, text: streamEvent.text } }));
+            } else if (streamEvent.type === "tool_call") {
+              finishReason = "tool_call";
+              toolCalls.push({ callId: streamEvent.callId, toolName: streamEvent.toolName, input: streamEvent.input, status: "requested", startedAt: new Date().toISOString() });
+            } else if (streamEvent.type === "usage") {
+              usage = streamEvent.usage;
+            } else {
+              finishReason = streamEvent.finishReason;
+            }
           }
+          lastError = undefined;
+          break;
+        } catch (error) {
+          lastError = error;
+          // Only a call that produced no output is safe to replay.
+          const retryable = !streamed && !controller.signal.aborted && attempt <= this.modelRetries;
+          if (!retryable) {
+            break;
+          }
+          yield this.append(eventInput({
+            eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.RETRY_SCHEDULED,
+            payload: {
+              operation: "model.chat", attempt, maxAttempts: this.modelRetries + 1,
+              reason: error instanceof Error ? error.message : String(error)
+            }
+          }));
+          await new Promise((resolve) => setTimeout(resolve, this.modelRetryDelayMs * attempt));
         }
-      } catch (error) {
-        const modelFailure = failure(error);
+      }
+
+      if (lastError !== undefined) {
+        const modelFailure = failure(lastError);
         yield this.append(eventInput({ eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.MODEL_FAILED, payload: { sessionId, requestId, error: modelFailure } }));
         if (!controller.signal.aborted) {
           yield* this.failTask(taskId, sessionId, modelFailure);
         }
         return "aborted";
       }
+
       const text = deltas.join("");
-      messages.push({ role: "assistant", content: text });
-      yield this.append(eventInput({ eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.MODEL_COMPLETED, payload: { sessionId, requestId, text, finishReason } }));
+      const assistantCalls: AssistantToolCall[] = toolCalls.map((call) => ({
+        callId: call.callId,
+        toolName: call.toolName,
+        input: call.input
+      }));
+      // Chat APIs require the assistant turn to carry the tool calls it made.
+      messages.push({
+        role: "assistant",
+        content: text,
+        ...(assistantCalls.length === 0 ? {} : { toolCalls: assistantCalls })
+      });
+      const costUsd = this.costOf(usage);
+      yield this.append(eventInput({
+        eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.MODEL_COMPLETED,
+        payload: {
+          sessionId, requestId, text, finishReason,
+          ...(usage === undefined ? {} : { usage }),
+          ...(costUsd === undefined ? {} : { costUsd })
+        }
+      }));
       if (controller.signal.aborted) {
         return "aborted";
       }
@@ -287,14 +410,39 @@ export class ReActRunner implements Runner {
     return "aborted";
   }
 
+  private costOf(usage: ModelUsage | undefined): number | undefined {
+    if (usage === undefined || this.pricing === undefined) {
+      return undefined;
+    }
+    return (
+      (usage.promptTokens / 1_000_000) * this.pricing.inputPerMillion +
+      (usage.completionTokens / 1_000_000) * this.pricing.outputPerMillion
+    );
+  }
+
+  /**
+   * Memory lookup is per keyword, not per sentence: a whole goal string almost
+   * never appears verbatim in stored memory, so LIKE '%<goal>%' matched nothing.
+   */
   private recall(goal: string): string {
     if (this.memory === undefined) {
       return "";
     }
-    const found = this.memoryScope === undefined
-      ? this.memory.search(goal)
-      : this.memory.search(goal, this.memoryScope.scope, this.memoryScope.scopeId);
-    const relevant = found.slice(0, 5);
+    const seen = new Map<string, { key: string; content: string }>();
+    for (const keyword of keywordsOf(goal)) {
+      const found = this.memoryScope === undefined
+        ? this.memory.search(keyword)
+        : this.memory.search(keyword, this.memoryScope.scope, this.memoryScope.scopeId);
+      for (const record of found) {
+        if (!seen.has(record.key)) {
+          seen.set(record.key, record);
+        }
+      }
+      if (seen.size >= 5) {
+        break;
+      }
+    }
+    const relevant = [...seen.values()].slice(0, 5);
     if (relevant.length === 0) {
       return "";
     }
@@ -306,8 +454,13 @@ export class ReActRunner implements Runner {
       return;
     }
     const result = await this.compressor.compress(messages);
+    // Keep the trailing tool exchange: dropping it would leave tool results
+    // without their assistant tool_calls and the next request would be rejected.
+    const keepFrom = trailingToolExchangeStart(messages);
+    const tail = keepFrom === -1 ? [] : messages.slice(keepFrom);
     messages.length = 0;
     messages.push({ role: "system", content: result.summary });
+    messages.push(...tail);
     yield this.append(eventInput({
       eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.CONTEXT_COMPRESSED,
       payload: {

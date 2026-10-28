@@ -264,3 +264,48 @@ Phase 9 限制：Benchmark 是确定性离线基准，不代表真实模型、Je
 - **Electron 未验证**：本机无法下载 Electron 二进制，桌宠以浏览器渲染层运行；Electron 外壳代码存在但未运行过。
 - **Live2D / 语音资源未引入**：涉及第三方授权，需单独审查。
 - **公开数据集未接入**：`importPublicJsonlDataset` 仍无调用方，Terminal-Bench / τ-bench / BFCL 等未接入。
+
+## 内核可用性修复 — 2026-10-28（第二轮）
+
+第一轮修完后做了真实模型接入测试，暴露出内核接口层面的缺陷。本轮全部修完，并用真实模型验证。
+
+| Step | 状态 | 验证 | 记录 |
+|---|---|---|---|
+| K.1 工具参数 schema | 完成 | `ProviderTool` / `ToolDefinition` 增加 `parameters`，4 个内置工具都有 schema | 2026-10-28 |
+| K.2 tool_calls 回写 | 完成 | assistant 消息携带 `toolCalls`，OpenAI/Anthropic 转换均已覆盖 | 2026-10-28 |
+| K.3 OpenAI 兼容 Provider | 完成 | `OpenAIChatProvider`，流式 + 工具参数分片累积 + usage | 2026-10-28 |
+| K.4 Anthropic Provider | 完成 | `AnthropicProvider`，system 提升、tool_result 嵌套、input_json_delta 拼接 | 2026-10-28 |
+| K.5 参数解析失败即失败 | 完成 | 模型输出非法 JSON 时抛 `INVALID_INPUT`，不静默传给工具 | 2026-10-28 |
+| K.6 run_tests 可配置 | 完成 | 按 lockfile 自动探测 pnpm/npm/yarn/bun，支持注入命令 | 2026-10-28 |
+| K.7 记忆召回改关键词 | 完成 | 整句 LIKE 改为分词（拉丁词 + 中文二元组），召回真正生效 | 2026-10-28 |
+| K.8 压缩保留工具链 | 完成 | 压缩时保留尾部 tool_use/tool_result 块，避免下一轮被 API 拒绝 | 2026-10-28 |
+| K.9 模型重试 | 完成 | 未产生输出的失败才重试，写 `retry.scheduled` | 2026-10-28 |
+| K.10 usage 与成本 | 完成 | `model.completed` 携带 `usage` 与 `costUsd`，价格表可配置 | 2026-10-28 |
+| K.11 会话上下文重建 | 完成 | `rebuildConversation` 从事件账本还原消息，恢复是真续跑 | 2026-10-28 |
+| K.12 重复 task.failed | 完成 | 真机测试发现的缺陷，已修并补回归测试 | 2026-10-28 |
+| K.13 桌面 App | 完成 | 任务列表、时间线、审批、记忆、工具、状态六个区域 | 2026-10-28 |
+| K.14 同源代理 | 完成 | 桌面 App 代理 `/api`，消除 CORS | 2026-10-28 |
+| K.15 Live2D 素材接入 | 完成 | 从 open-yachiyo 导入模型与运行时，素材不进仓库 | 2026-10-28 |
+
+### 本轮验证记录
+
+- `pnpm lint`：通过。
+- `pnpm typecheck`：通过。
+- `pnpm test`：通过，17 个测试文件、47 个测试。
+- `pnpm build`：通过。
+- **真实模型端到端**：`gpt-6.1-sol` 经 OpenAI 兼容端点，模型自行决定调用 `read_file`，读到内容后作答，任务完成，成本 `$0.023150` 可计算。
+
+### 真实模型测试环境
+
+```
+OPENAI_BASE_URL=https://api.fluxtoken.ai/v1
+AGENT_MODEL=gpt-6.1-sol
+AGENT_INPUT_PRICE / AGENT_OUTPUT_PRICE   可选，用于成本计算
+```
+
+### 本轮仍存在的边界
+
+- **只在 OpenAI 兼容端点上验证过**。Anthropic 协议已实现并有单测，但未对真实 Anthropic API 跑过。
+- **桌面 App 目前以浏览器方式验证**。Electron 二进制在本机无法下载，外壳代码未实际运行。
+- **Live2D 模型需本地导入**（`pnpm import-live2d`），不随仓库分发。渲染层在模型缺失时退回矢量角色。
+- **prompt tokens 偏高**（约 4400/次，工具定义仅 1233 字节），差额来自中转服务注入的系统提示，不在本项目控制范围。

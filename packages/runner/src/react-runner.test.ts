@@ -74,6 +74,33 @@ describe("ReActRunner", () => {
     ledger.close();
   });
 
+  it("does not append a second task.failed when the model call already failed", async () => {
+    const { ledger } = await makeLedger();
+    const taskId = "task-model-fail";
+    ledger.createTask({ taskId, goal: "call the model", runnerType: RUNNER_TYPES.DIRECT });
+    const tools = new ToolRegistry();
+    const provider = new FakeProvider([]);
+    // A provider that rejects the way a 401 or 500 would.
+    const failing = {
+      name: "failing",
+      model: "failing-model",
+      // eslint-disable-next-line require-yield
+      async *chat() {
+        throw new Error("upstream rejected the request");
+      }
+    };
+    const runner = new ReActRunner({ ledger, provider: failing, tools, modelRetries: 0 });
+    const events = [];
+    for await (const event of runner.run(taskId)) events.push(event);
+
+    const failed = ledger.getEvents(taskId).filter((event) => event.type === RUNTIME_EVENT_TYPES.TASK_FAILED);
+    expect(failed).toHaveLength(1);
+    expect(ledger.getTask(taskId)?.status).toBe(TASK_STATUSES.FAILED);
+    expect(events.some((event) => event.type === RUNTIME_EVENT_TYPES.SESSION_ENDED)).toBe(true);
+    void provider;
+    ledger.close();
+  });
+
   it("can pause a running task and resume it later", async () => {
     const { ledger } = await makeLedger();
     const taskId = "task-pause";

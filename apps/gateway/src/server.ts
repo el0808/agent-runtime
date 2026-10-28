@@ -61,6 +61,92 @@ async function route(runtime: AgentRuntime, req: IncomingMessage, url: URL, body
     return { status: 200, body: { ok: true } };
   }
 
+  if (segments[0] === "memories" && segments.length === 1 && method === "GET") {
+    const query = url.searchParams.get("q");
+    if (query === null || query.trim() === "") {
+      return { status: 400, body: { error: "q is required" } };
+    }
+    const scope = url.searchParams.get("scope");
+    const allowed = ["global", "project", "task", "session"] as const;
+    const validScope = allowed.find((candidate) => candidate === scope);
+    return { status: 200, body: runtime.memory.search(query, validScope, url.searchParams.get("scopeId") ?? undefined) };
+  }
+
+  if (segments[0] === "memories" && segments.length === 1 && method === "POST") {
+    const input = (body ?? {}) as JsonObject;
+    if (typeof input.key !== "string" || typeof input.content !== "string" || typeof input.scope !== "string") {
+      return { status: 400, body: { error: "key, content and scope are required" } };
+    }
+    const scope = input.scope;
+    if (scope !== "global" && scope !== "project" && scope !== "task" && scope !== "session") {
+      return { status: 400, body: { error: "scope must be global, project, task or session" } };
+    }
+    const record = runtime.memory.create({
+      key: input.key,
+      content: input.content,
+      scope,
+      source: typeof input.source === "string" ? input.source : "user",
+      ...(typeof input.scopeId === "string" ? { scopeId: input.scopeId } : {}),
+      ...(typeof input.taskId === "string" ? { taskId: input.taskId } : {}),
+      ...(typeof input.confidence === "number" ? { confidence: input.confidence } : {})
+    });
+    return { status: 201, body: record };
+  }
+
+  const memoryId = segments[0] === "memories" ? segments[1] : undefined;
+  if (memoryId !== undefined) {
+    if (method === "DELETE") {
+      runtime.memory.delete(memoryId);
+      return { status: 204, body: null };
+    }
+    if (method === "GET") {
+      return { status: 200, body: runtime.memory.history(memoryId) };
+    }
+    if (method === "PATCH") {
+      const input = (body ?? {}) as JsonObject;
+      if (typeof input.expectedVersion !== "number") {
+        return { status: 400, body: { error: "expectedVersion is required" } };
+      }
+      const updated = runtime.memory.update(
+        memoryId,
+        {
+          ...(typeof input.content === "string" ? { content: input.content } : {}),
+          ...(typeof input.source === "string" ? { source: input.source } : {}),
+          ...(typeof input.confidence === "number" ? { confidence: input.confidence } : {})
+        },
+        input.expectedVersion
+      );
+      return { status: 200, body: updated };
+    }
+  }
+
+  if (segments[0] === "provider" && method === "GET") {
+    return {
+      status: 200,
+      body: {
+        name: runtime.providerSelection.provider.name,
+        model: runtime.providerSelection.provider.model,
+        live: runtime.providerSelection.live,
+        reason: runtime.providerSelection.reason
+      }
+    };
+  }
+
+  if (segments[0] === "tools" && method === "GET") {
+    return {
+      status: 200,
+      body: runtime.tools.list().map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters
+      }))
+    };
+  }
+
+  if (segments[0] === "tasks" && segments.length === 1 && method === "GET") {
+    return { status: 200, body: runtime.ledger.listTasks(50) };
+  }
+
   if (segments[0] === "tasks" && segments.length === 1 && method === "POST") {
     const input = (body ?? {}) as JsonObject;
     const goal = typeof input.goal === "string" ? input.goal : "";
