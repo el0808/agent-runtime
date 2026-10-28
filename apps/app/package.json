@@ -1,0 +1,53 @@
+{
+  "name": "@agent/app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Desktop app for the local-first agent runtime",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -b && node scripts/copy-preload.mjs",
+    "typecheck": "tsc -b --pretty false",
+    "start": "electron dist/main.js",
+    "preload": "node scripts/copy-preload.mjs",
+    "pack": "electron-builder --mac dir --arm64 --publish never",
+    "dist": "electron-builder --mac dmg zip --arm64 --publish never"
+  },
+  "dependencies": {
+    "@agent/memory": "workspace:*",
+    "@agent/policy": "workspace:*",
+    "@agent/protocol": "workspace:*",
+    "@agent/routing": "workspace:*",
+    "@agent/runner": "workspace:*",
+    "@agent/sync": "workspace:*",
+    "@agent/task-ledger": "workspace:*",
+    "@agent/tools": "workspace:*",
+    "@agent/verifier": "workspace:*",
+    "@agent/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.el0808.agent",
+    "productName": "Agent",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    }
+  }
+}

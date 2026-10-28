@@ -11,10 +11,12 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "typecheck": "tsc -b --pretty false"
+    "typecheck": "tsc -b --pretty false",
+    "bench:live": "node --experimental-strip-types dist/live-run.js"
   },
   "dependencies": {
     "@agent/protocol": "workspace:*",
-    "@agent/runner": "workspace:*"
+    "@agent/runner": "workspace:*",
+    "@agent/runtime": "workspace:*"
   }
 }

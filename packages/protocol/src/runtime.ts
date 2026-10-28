@@ -100,6 +100,7 @@ export const RUNTIME_EVENT_TYPES = {
   TASK_FAILED: "task.failed",
   TASK_CANCELLED: "task.cancelled",
   TASK_STEP_COMPLETED: "task.step_completed",
+  USER_MESSAGE: "user.message",
   CHECKPOINT_CREATED: "checkpoint.created",
   CHECKPOINT_RESTORED: "checkpoint.restored",
   VERIFICATION_RECORDED: "verification.recorded",
@@ -154,6 +155,18 @@ export interface TaskFailedPayload {
 
 export interface TaskCancelledPayload {
   reason?: string;
+}
+
+/** One image attached to a user turn, as base64 so the ledger stays self-contained. */
+export interface UserImage {
+  mediaType: string;
+  data: string;
+}
+
+/** A turn the user typed into a conversation, optionally with images. */
+export interface UserMessagePayload {
+  text: string;
+  images?: readonly UserImage[];
 }
 
 export interface TaskStepCompletedPayload {
@@ -344,6 +357,7 @@ export interface RuntimeEventByType {
   "task.failed": RuntimeEventBase<"task.failed", TaskFailedPayload>;
   "task.cancelled": RuntimeEventBase<"task.cancelled", TaskCancelledPayload>;
   "task.step_completed": RuntimeEventBase<"task.step_completed", TaskStepCompletedPayload>;
+  "user.message": RuntimeEventBase<"user.message", UserMessagePayload>;
   "checkpoint.created": RuntimeEventBase<"checkpoint.created", CheckpointCreatedPayload>;
   "checkpoint.restored": RuntimeEventBase<"checkpoint.restored", CheckpointRestoredPayload>;
   "verification.recorded": RuntimeEventBase<"verification.recorded", VerificationRecordedPayload>;

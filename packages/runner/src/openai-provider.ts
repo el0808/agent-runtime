@@ -68,6 +68,18 @@ function toOpenAIMessages(messages: readonly ChatMessage[]): Record<string, unkn
         }))
       };
     }
+    // A user turn with images uses the content-array form: OpenAI rejects
+    // image parts sent as a plain string.
+    if (message.role === "user" && (message.parts?.length ?? 0) > 0) {
+      return {
+        role: "user",
+        content: (message.parts ?? []).map((part) =>
+          part.type === "text"
+            ? { type: "text", text: part.text }
+            : { type: "image_url", image_url: { url: `data:${part.mediaType};base64,${part.data}` } }
+        )
+      };
+    }
     return { role: message.role, content: message.content };
   });
 }
@@ -114,6 +126,31 @@ export class OpenAIChatProvider implements ModelProvider {
     this.maxTokens = options.maxTokens;
   }
 
+  /** Lists the models the endpoint advertises, so settings can offer real choices. */
+  async listModels(signal?: AbortSignal): Promise<{ id: string; contextLength?: number }[]> {
+    const response = await fetch(`${this.baseUrl}/models`, {
+      headers: { authorization: `Bearer ${this.apiKey}`, ...this.extraHeaders },
+      ...(signal === undefined ? {} : { signal })
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw new RuntimeError({
+        code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+        message: `Could not list models (${response.status}): ${detail.slice(0, 200)}`,
+        details: { status: response.status }
+      });
+    }
+    const body = (await response.json()) as { data?: { id?: string; context_length?: number; context_window?: number }[] };
+    return (body.data ?? [])
+      .map((entry) => ({
+        id: typeof entry.id === "string" ? entry.id : "",
+        ...(typeof entry.context_length === "number" ? { contextLength: entry.context_length } : {}),
+        ...(typeof entry.context_window === "number" ? { contextLength: entry.context_window } : {})
+      }))
+      .filter((entry) => entry.id !== "")
+      .sort((a, b) => a.id.localeCompare(b.id));
+  }
+
   async *chat(request: ModelRequest, signal: AbortSignal): AsyncIterable<ModelStreamEvent> {
     const body: JsonObject = {
       model: request.model,
@@ -123,7 +160,8 @@ export class OpenAIChatProvider implements ModelProvider {
       stream_options: { include_usage: true },
       ...(request.tools.length === 0 ? {} : { tools: toOpenAITools(request.tools) as unknown as JsonObject[] }),
       ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
-      ...(request.maxTokens === undefined ? {} : { max_tokens: request.maxTokens })
+      ...(request.maxTokens === undefined ? {} : { max_tokens: request.maxTokens }),
+      ...(request.reasoningEffort === undefined ? {} : { reasoning_effort: request.reasoningEffort })
     };
 
     const response = await fetch(`${this.baseUrl}/chat/completions`, {

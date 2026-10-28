@@ -314,6 +314,18 @@ export function applyRuntimeEvent(
     case RUNTIME_EVENT_TYPES.VERIFICATION_RECORDED:
       return { ...next, verification: event.payload.result };
 
+    // A user turn reopens a finished conversation. The prior turns stay in the
+    // log, so the model continues from its own history instead of starting over.
+    case RUNTIME_EVENT_TYPES.USER_MESSAGE: {
+      if (state.status === TASK_STATUSES.CANCELLED) {
+        invalidTransition(state.taskId, state.status, event.type);
+      }
+      const reopened = { ...next, status: TASK_STATUSES.PENDING };
+      delete reopened.currentStep;
+      delete reopened.error;
+      return reopened;
+    }
+
     default:
       return event satisfies never;
   }

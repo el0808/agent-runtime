@@ -101,8 +101,28 @@ export class MemoryStore {
 
   close(): void { this.db.close(); }
 
+  /**
+   * Finds an existing memory with the same key in the same scope. SQLite treats
+   * NULLs as distinct, so UNIQUE(key, scope, scope_id) does not fire when
+   * scope_id is unset; this lookup is what actually prevents duplicates.
+   */
+  private findByKey(key: string, scope: MemoryScope, scopeId: string | undefined): MemoryRecord | undefined {
+    const row = this.db
+      .prepare("SELECT * FROM memories WHERE key = ? AND scope = ? AND COALESCE(scope_id, '') = COALESCE(?, '')")
+      .get(key, scope, scopeId ?? null) as unknown as MemoryRow | undefined;
+    return row === undefined ? undefined : this.toRecord(row);
+  }
+
   create(input: CreateMemoryInput): MemoryRecord {
     this.validateConfidence(input.confidence ?? 1);
+    const existing = this.findByKey(input.key, input.scope, input.scopeId);
+    if (existing !== undefined) {
+      throw new RuntimeError({
+        code: ERROR_CODES.CONFLICT,
+        message: `Memory ${input.key} already exists in scope ${input.scope}`,
+        details: { memoryId: existing.memoryId, version: existing.version }
+      });
+    }
     const now = this.now().toISOString();
     const memoryId = this.idFactory();
     this.db.exec("BEGIN IMMEDIATE");
@@ -120,6 +140,14 @@ export class MemoryStore {
   }
 
   get(memoryId: string): MemoryRecord | undefined { const row = this.db.prepare("SELECT * FROM memories WHERE memory_id = ?").get(memoryId) as unknown as MemoryRow | undefined; return row === undefined ? undefined : this.toRecord(row); }
+
+  /** Newest records in a scope, used to inject durable memory without a query. */
+  list(scope: MemoryScope, limit = 50): MemoryRecord[] {
+    const rows = this.db
+      .prepare("SELECT * FROM memories WHERE scope = ? ORDER BY updated_at DESC LIMIT ?")
+      .all(scope, limit) as unknown as MemoryRow[];
+    return rows.map((row) => this.toRecord(row));
+  }
 
   search(query: string, scope?: MemoryScope, scopeId?: string): MemoryRecord[] {
     const pattern = `%${query}%`;

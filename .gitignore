@@ -18,3 +18,10 @@ storage/checkpoints/*
 # Live2D model assets are large and separately licensed; import them locally.
 apps/desktop-app/renderer/models/
 apps/desktop-app/renderer/live2d-bundle.js
+
+# live benchmark scratch state
+.bench-storage/
+
+# stray screenshots captured during debugging
+chrome-screen.png
+learn-more.png

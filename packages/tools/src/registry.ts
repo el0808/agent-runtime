@@ -110,8 +110,18 @@ export class ToolRegistry {
   }
 
   async execute(name: string, input: JsonObject, options: ToolExecutionOptions = {}): Promise<ToolExecutionResult> {
-    const definition = this.get(name);
     const startedAt = Date.now();
+    // A tool the model invented is a caller error, not a crash: report it the
+    // same way every other failure is reported so the run can continue.
+    const definition = this.definitions.get(name);
+    if (definition === undefined) {
+      return {
+        status: "failed",
+        error: { code: ERROR_CODES.NOT_FOUND, message: `Tool ${name} is not registered` },
+        completedAt: new Date().toISOString(),
+        durationMs: 0
+      };
+    }
     const timeoutMs = options.timeoutMs ?? 30_000;
     if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
       throw new RuntimeError({ code: ERROR_CODES.INVALID_INPUT, message: "timeoutMs must be positive" });

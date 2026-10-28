@@ -16,6 +16,14 @@ export interface PermissionDecision {
 export interface PolicyOptions {
   readonly deniedTools?: readonly string[];
   readonly autoApproveMedium?: boolean;
+  /** Extra tools that only observe state, merged with {@link READ_ONLY_TOOLS}. */
+  readonly readOnlyTools?: readonly string[];
+  /** Extra tools that change the workspace, merged with {@link WRITE_TOOLS}. */
+  readonly writeTools?: readonly string[];
+  /** Extra tools with no effect outside agent storage, merged with {@link SAFE_LOCAL_TOOLS}. */
+  readonly safeLocalTools?: readonly string[];
+  /** Per-tool risk, for tools whose risk cannot be inferred from the name. */
+  readonly riskOverrides?: Readonly<Record<string, RiskLevel>>;
 }
 
 export function classifyCommandRisk(command: string): RiskLevel {
@@ -26,19 +34,53 @@ export function classifyCommandRisk(command: string): RiskLevel {
   return "low";
 }
 
+/** Well-known tools that only observe state, so they never need approval. */
+export const READ_ONLY_TOOLS: readonly string[] = ["read_file", "list_dir", "search_files", "glob", "grep"];
+
+/** Tools that change the workspace but are reversible through a checkpoint. */
+export const WRITE_TOOLS: readonly string[] = ["write_file", "edit_file", "apply_patch"];
+
+/**
+ * Tools with no effect outside the agent's own storage. They are not read-only,
+ * but asking a human to approve saving a memory would make the tool useless.
+ */
+export const SAFE_LOCAL_TOOLS: readonly string[] = ["remember", "todo_write", "notebook"];
+
 export class ToolPermissionPolicy {
   private readonly deniedTools: ReadonlySet<string>;
   private readonly autoApproveMedium: boolean;
+  private readonly readOnly: ReadonlySet<string>;
+  private readonly writable: ReadonlySet<string>;
+  private readonly local: ReadonlySet<string>;
+  private readonly overrides: Readonly<Record<string, RiskLevel>>;
 
   constructor(options: PolicyOptions = {}) {
     this.deniedTools = new Set(options.deniedTools ?? []);
     this.autoApproveMedium = options.autoApproveMedium ?? false;
+    this.readOnly = new Set([...READ_ONLY_TOOLS, ...(options.readOnlyTools ?? [])]);
+    this.writable = new Set([...WRITE_TOOLS, ...(options.writeTools ?? [])]);
+    this.local = new Set([...SAFE_LOCAL_TOOLS, ...(options.safeLocalTools ?? [])]);
+    this.overrides = options.riskOverrides ?? {};
+  }
+
+  /** Explicit override wins, then the read-only set, then the tool's command. */
+  private riskOf(toolName: string, command: string): RiskLevel {
+    const override = this.overrides[toolName];
+    if (override !== undefined) return override;
+    if (this.readOnly.has(toolName)) return "low";
+    if (this.local.has(toolName)) return "low";
+    if (this.writable.has(toolName)) return "medium";
+    if (toolName === "run_tests") return "low";
+    if (command.length > 0) return classifyCommandRisk(command);
+    // An unknown tool that takes no command is treated as risky on purpose:
+    // new tools must be classified explicitly rather than defaulting to allow.
+    return "high";
   }
 
   evaluate(toolName: string, input: JsonObject): PermissionDecision {
     if (this.deniedTools.has(toolName)) return { outcome: "deny", risk: "critical", reason: `Tool ${toolName} is denied by policy` };
     const command = typeof input.command === "string" ? input.command : "";
-    const risk = toolName === "read_file" || toolName === "run_tests" ? "low" : toolName === "write_file" ? "medium" : command.length > 0 ? classifyCommandRisk(command) : "high";
+    const risk = this.riskOf(toolName, command);
     if (risk === "critical") return { outcome: "deny", risk, reason: "Critical destructive operations are blocked by deterministic policy" };
     if (risk === "high" || (risk === "medium" && !this.autoApproveMedium)) return { outcome: "approval_required", risk, reason: "Operation requires an explicit human approval" };
     return { outcome: "allow", risk, reason: "Operation is allowed by deterministic policy" };
@@ -58,6 +100,15 @@ export class ApprovalManager {
   }
 
   resolve(taskId: string, approvalId: string, decision: "approved" | "rejected" | "expired", actor: string, ledger: TaskLedger, reason?: string): void {
+    // Appending for an id the task never asked for writes an event the state
+    // machine cannot replay, which corrupts the task permanently.
+    if (!this.pending(taskId, ledger).includes(approvalId)) {
+      throw new RuntimeError({
+        code: ERROR_CODES.NOT_FOUND,
+        message: `Approval ${approvalId} is not pending for task ${taskId}`,
+        details: { taskId, approvalId }
+      });
+    }
     this.decisions.set(approvalId, decision);
     ledger.appendEvent({
       eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.APPROVAL_RESOLVED,

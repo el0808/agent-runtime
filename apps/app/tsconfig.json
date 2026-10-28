@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": ["node"]
+  },
+  "references": [
+    { "path": "../../packages/protocol" },
+    { "path": "../../packages/task-ledger" },
+    { "path": "../../packages/tools" },
+    { "path": "../../packages/runner" },
+    { "path": "../../packages/routing" },
+    { "path": "../../packages/policy" },
+    { "path": "../../packages/verifier" },
+    { "path": "../../packages/memory" },
+    { "path": "../../packages/sync" },
+    { "path": "../runtime" }
+  ],
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

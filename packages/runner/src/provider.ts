@@ -7,13 +7,36 @@ export interface AssistantToolCall {
   readonly input: JsonObject;
 }
 
+/** One piece of a multimodal user turn. */
+export type MessagePart =
+  | { readonly type: "text"; readonly text: string }
+  | { readonly type: "image"; readonly mediaType: string; readonly data: string };
+
 export interface ChatMessage {
   readonly role: "system" | "user" | "assistant" | "tool";
+  /**
+   * Plain text. Always set, so callers that only understand text keep working;
+   * for a turn with images it holds the text parts joined.
+   */
   readonly content: string;
+  /** Set when the turn has images; providers serialise this instead of `content`. */
+  readonly parts?: readonly MessagePart[];
   /** Set on `tool` messages: which assistant tool call this responds to. */
   readonly toolCallId?: string;
   /** Set on `assistant` messages that requested tools. */
   readonly toolCalls?: readonly AssistantToolCall[];
+}
+
+/** Builds a user turn from text plus optional images, collapsing to plain text when there are none. */
+export function userMessage(text: string, images: readonly { readonly mediaType: string; readonly data: string }[] = []): ChatMessage {
+  if (images.length === 0) {
+    return { role: "user", content: text };
+  }
+  const parts: MessagePart[] = [
+    ...(text === "" ? [] : [{ type: "text" as const, text }]),
+    ...images.map((image) => ({ type: "image" as const, mediaType: image.mediaType, data: image.data }))
+  ];
+  return { role: "user", content: text, parts };
 }
 
 export interface ProviderTool {
@@ -34,6 +57,8 @@ export interface ModelRequest {
   readonly tools: readonly ProviderTool[];
   readonly temperature?: number;
   readonly maxTokens?: number;
+  /** How hard the model should think. Providers that support it forward this. */
+  readonly reasoningEffort?: "low" | "medium" | "high";
 }
 
 export type ModelStreamEvent =

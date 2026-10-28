@@ -57,6 +57,9 @@
     },
     {
       "path": "apps/desktop-app"
+    },
+    {
+      "path": "apps/app"
     }
   ]
 }

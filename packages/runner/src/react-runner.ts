@@ -13,6 +13,7 @@ import type { TaskLedger } from "@agent/task-ledger";
 import type { ToolExecutionOptions, ToolExecutionResult, ToolRegistry } from "@agent/tools";
 import type { AssistantToolCall, ChatMessage, ModelProvider, ModelUsage } from "./provider.js";
 import { rebuildConversation } from "./conversation.js";
+import { buildSystemPrompt } from "./prompt.js";
 
 export interface ToolExecutor {
   execute(name: string, input: JsonObject, options: ToolExecutionOptions): Promise<ToolExecutionResult>;
@@ -20,6 +21,11 @@ export interface ToolExecutor {
 
 export interface MemoryReader {
   search(query: string, scope?: "global" | "project" | "task" | "session", scopeId?: string): readonly {
+    readonly key: string;
+    readonly content: string;
+  }[];
+  /** Newest records in a scope, so durable memory needs no matching query. */
+  list(scope: "global" | "project" | "task" | "session", limit?: number): readonly {
     readonly key: string;
     readonly content: string;
   }[];
@@ -48,6 +54,8 @@ export interface ReActRunnerOptions {
   readonly workspaceRoot: string | undefined;
   readonly toolTimeoutMs?: number;
   readonly maxTurns?: number;
+  /** How hard the model should think, forwarded on every request. */
+  readonly reasoningEffort?: "low" | "medium" | "high";
   /** Defaults to `tools`. Pass a policy-enforcing executor to gate tool calls. */
   readonly executor?: ToolExecutor;
   readonly memory?: MemoryReader;
@@ -150,6 +158,7 @@ export class ReActRunner implements Runner {
   private readonly workspaceRoot: string | undefined;
   private readonly toolTimeoutMs: number;
   private readonly maxTurns: number;
+  private readonly reasoningEffort: "low" | "medium" | "high" | undefined;
   private readonly executor: ToolExecutor;
   private readonly memory: MemoryReader | undefined;
   private readonly compressor: ContextCompressor | undefined;
@@ -166,6 +175,7 @@ export class ReActRunner implements Runner {
     this.workspaceRoot = options.workspaceRoot;
     this.toolTimeoutMs = options.toolTimeoutMs ?? 30_000;
     this.maxTurns = options.maxTurns ?? 8;
+    this.reasoningEffort = options.reasoningEffort;
     this.executor = options.executor ?? options.tools;
     this.memory = options.memory;
     this.compressor = options.compressor;
@@ -196,6 +206,7 @@ export class ReActRunner implements Runner {
     if (task.status === TASK_STATUSES.COMPLETED || task.status === TASK_STATUSES.CANCELLED) {
       throw new RuntimeError({ code: ERROR_CODES.INVALID_STATE_TRANSITION, message: `Task ${taskId} is ${task.status}` });
     }
+    // Set before the first await so two callers cannot both pass the check.
     if (this.active.has(taskId)) {
       throw new RuntimeError({ code: ERROR_CODES.CONFLICT, message: `Task ${taskId} is already running` });
     }
@@ -211,13 +222,33 @@ export class ReActRunner implements Runner {
       }
       yield this.append(eventInput({ eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.SESSION_STARTED, payload: { sessionId } }));
 
-      const baseMessages: ChatMessage[] = [];
+      const baseMessages: ChatMessage[] = [
+        {
+          role: "system",
+          content: buildSystemPrompt({
+            ...(this.workspaceRoot === undefined ? {} : { workspaceRoot: this.workspaceRoot }),
+            toolNames: this.tools.list().map((tool) => tool.name)
+          })
+        }
+      ];
       const memory = this.recall(task.profile.goal);
       if (memory !== "") {
-        baseMessages.push({ role: "system", content: memory });
+        baseMessages.push({ role: "system", content: `Relevant memory from earlier tasks:\n${memory}` });
       }
 
       if (plan.length === 0) {
+        // A resume after an approval replays the calls the gate blocked, so the
+        // side effect happens before the model is asked anything else.
+        if (task.status === TASK_STATUSES.PAUSED) {
+          const replayed = yield* this.replayGrantedCalls(taskId, sessionId, controller);
+          if (replayed) {
+            const after = this.ledger.getTask(taskId);
+            if (after?.status === TASK_STATUSES.PAUSED) {
+              yield this.append(eventInput({ eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.SESSION_ENDED, payload: { sessionId, status: "paused" } }));
+              return;
+            }
+          }
+        }
         // A resumed or retried task continues its conversation instead of
         // starting over: the history is rebuilt from the event log.
         const messages: ChatMessage[] = [
@@ -309,6 +340,7 @@ export class ReActRunner implements Runner {
         streamed = false;
         try {
           for await (const streamEvent of this.provider.chat({
+            ...(this.reasoningEffort === undefined ? {} : { reasoningEffort: this.reasoningEffort }),
             model: this.provider.model,
             messages,
             tools: toolSchemas
@@ -379,6 +411,9 @@ export class ReActRunner implements Runner {
       if (controller.signal.aborted) {
         return "aborted";
       }
+      // Compress before deciding the turn is over: a conversation that only
+      // chats would otherwise never compact and would grow past the budget.
+      yield* this.maybeCompress(taskId, messages);
       if (toolCalls.length === 0) {
         return "completed";
       }
@@ -421,32 +456,56 @@ export class ReActRunner implements Runner {
   }
 
   /**
-   * Memory lookup is per keyword, not per sentence: a whole goal string almost
-   * never appears verbatim in stored memory, so LIKE '%<goal>%' matched nothing.
+   * Gathers memory for the prompt.
+   *
+   * Keyword matching alone was not enough: a fact saved as "always use pnpm,
+   * never npm" was never injected for a goal like "install a dependency",
+   * because no word overlapped. Durable project memory is therefore always
+   * included, budget permitting, and keyword hits are added on top for the
+   * narrower scopes.
    */
-  private recall(goal: string): string {
+  private recall(goal: string, budgetChars = 4_000): string {
     if (this.memory === undefined) {
       return "";
     }
-    const seen = new Map<string, { key: string; content: string }>();
+    const scopes: readonly ("global" | "project" | "task" | "session")[] =
+      this.memoryScope === undefined ? ["global", "project"] : [this.memoryScope.scope];
+
+    const chosen = new Map<string, { key: string; content: string }>();
+    const take = (record: { key: string; content: string }) => {
+      chosen.set(`${record.key}\u0000${record.content}`, record);
+    };
+
+    // Everything durable first, newest first, so conventions are never missed.
+    for (const scope of scopes) {
+      for (const record of this.memory.list(scope, 40)) {
+        take(record);
+      }
+    }
+    // Then anything matching the goal, which reaches task- and session-scoped rows.
     for (const keyword of keywordsOf(goal)) {
       const found = this.memoryScope === undefined
         ? this.memory.search(keyword)
         : this.memory.search(keyword, this.memoryScope.scope, this.memoryScope.scopeId);
       for (const record of found) {
-        if (!seen.has(record.key)) {
-          seen.set(record.key, record);
-        }
-      }
-      if (seen.size >= 5) {
-        break;
+        take(record);
       }
     }
-    const relevant = [...seen.values()].slice(0, 5);
-    if (relevant.length === 0) {
+
+    if (chosen.size === 0) {
       return "";
     }
-    return ["Known context:", ...relevant.map((record) => `- ${record.key}: ${record.content}`)].join("\n");
+    const lines: string[] = [];
+    let used = 0;
+    for (const record of chosen.values()) {
+      const line = `- ${record.key}: ${record.content}`;
+      if (used + line.length > budgetChars) {
+        break;
+      }
+      used += line.length;
+      lines.push(line);
+    }
+    return lines.length === 0 ? "" : ["Known context:", ...lines].join("\n");
   }
 
   private async *maybeCompress(taskId: string, messages: ChatMessage[]): AsyncGenerator<RuntimeEvent> {
@@ -493,16 +552,28 @@ export class ReActRunner implements Runner {
 
   async cancel(taskId: string): Promise<void> {
     const active = this.active.get(taskId);
-    if (active === undefined) {
-      throw new RuntimeError({ code: ERROR_CODES.NOT_FOUND, message: `Task ${taskId} is not running` });
+    if (active !== undefined) {
+      this.ledger.appendEvent({ eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.TASK_CANCELLED, payload: { reason: "cancelled by caller" } });
+      active.controller.abort(new Error("cancelled by caller"));
+      return;
+    }
+    // A task that is not mid-run can still be cancelled: the state machine
+    // allows it from pending, paused and failed, which is what a user pressing
+    // Stop on a paused conversation expects.
+    const state = this.ledger.getTask(taskId);
+    if (state === undefined) {
+      throw new RuntimeError({ code: ERROR_CODES.TASK_NOT_FOUND, message: `Task ${taskId} was not found` });
     }
     this.ledger.appendEvent({ eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.TASK_CANCELLED, payload: { reason: "cancelled by caller" } });
-    active.controller.abort(new Error("cancelled by caller"));
   }
 
   /**
-   * Restores the newest checkpoint and marks the task running again.
+   * Restores the newest checkpoint so the task can run again.
    * Compensation for external effects is the caller's responsibility (see @agent/policy).
+   *
+   * A terminal task cannot be restored in place — the state machine refuses it,
+   * and a user pressing Rollback is almost always looking at a finished task —
+   * so the task is reopened first and then restored.
    */
   async rollback(taskId: string): Promise<void> {
     const checkpoints = this.ledger.listCheckpoints(taskId);
@@ -514,6 +585,20 @@ export class ReActRunner implements Runner {
         details: { taskId }
       });
     }
+    const state = this.ledger.getTask(taskId);
+    if (state === undefined) {
+      throw new RuntimeError({ code: ERROR_CODES.TASK_NOT_FOUND, message: `Task ${taskId} was not found` });
+    }
+    if (state.status === TASK_STATUSES.COMPLETED || state.status === TASK_STATUSES.CANCELLED) {
+      // Reopen with a user turn so the restored run has somewhere to continue.
+      this.ledger.appendEvent({
+        eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.USER_MESSAGE,
+        payload: { text: "Roll back to the last checkpoint and continue from there." }
+      });
+    }
+    if (this.ledger.getTask(taskId)?.status === TASK_STATUSES.PENDING) {
+      this.ledger.appendEvent({ eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.TASK_STARTED, payload: { reason: "rollback" } });
+    }
     this.ledger.appendEvent({
       eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.RECOVERY_STARTED,
       payload: { checkpointId: target.checkpointId, reason: "rollback by caller" }
@@ -523,6 +608,108 @@ export class ReActRunner implements Runner {
 
   private append<T extends RuntimeEventInput>(input: T): RuntimeEvent {
     return this.ledger.appendEvent(input).event;
+  }
+
+  /**
+   * Runs the tool calls a granted approval unblocked. Approval pauses the task
+   * with the call already recorded on `tool.requested`, so resuming must replay
+   * those calls instead of asking the model to issue them again.
+   */
+  private async *replayGrantedCalls(taskId: string, sessionId: string, controller: AbortController): AsyncGenerator<RuntimeEvent, boolean> {
+    const events = this.ledger.getEvents(taskId);
+    const answered = new Set<string>();
+    for (const event of events) {
+      if (event.type === "tool.completed" || event.type === "tool.timed_out" || event.type === "tool.cancelled") {
+        answered.add(event.payload.callId);
+      }
+      // A blocked call is recorded as failed so the ledger stays truthful, but
+      // it never ran: approval is what unblocks it, so it must be replayed.
+      if (event.type === "tool.failed" && this.pendingApprovalId(event.payload.error) === undefined) {
+        answered.add(event.payload.callId);
+      }
+    }
+    const pending = events.flatMap((event) =>
+      event.type === "tool.requested" && !answered.has(event.payload.call.callId)
+        ? [event.payload.call]
+        : []
+    );
+    if (pending.length === 0) {
+      return false;
+    }
+    for (const call of pending) {
+      // A rejection is a decision, not a reason to ask again: record the call
+      // as failed and let the model report it.
+      if (this.wasRejected(taskId, call.toolName)) {
+        yield this.append(eventInput({
+          eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.TOOL_FAILED,
+          payload: {
+            sessionId,
+            callId: call.callId,
+            error: { code: ERROR_CODES.PERMISSION_DENIED, message: `The user rejected ${call.toolName}` },
+            completedAt: new Date().toISOString(),
+            durationMs: 0
+          }
+        }));
+        continue;
+      }
+      const approvalId = this.latestApprovalFor(taskId, call.toolName);
+      const result = await this.executor.execute(call.toolName, call.input, {
+        signal: controller.signal,
+        timeoutMs: this.toolTimeoutMs,
+        metadata: {
+          taskId,
+          callId: call.callId,
+          ...(approvalId === undefined ? {} : { approvalId })
+        },
+        ...(this.workspaceRoot === undefined ? {} : { workspaceRoot: this.workspaceRoot })
+      });
+      yield this.appendToolResult(taskId, sessionId, call.callId, result);
+      if (result.status === "failed" && result.error.code === ERROR_CODES.PERMISSION_DENIED) {
+        yield this.append(eventInput({
+          eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.TASK_PAUSED,
+          payload: { reason: `approval required for ${call.toolName}` }
+        }));
+        return true;
+      }
+    }
+    return true;
+  }
+
+  /** The approval id carried by a permission-denied failure, if it had one. */
+  private pendingApprovalId(error: TaskFailure): string | undefined {
+    if (error.code !== ERROR_CODES.PERMISSION_DENIED) {
+      return undefined;
+    }
+    const id = error.details?.approvalId;
+    return typeof id === "string" ? id : undefined;
+  }
+
+  /** Whether the newest approval for a tool was rejected by the user. */
+  private wasRejected(taskId: string, toolName: string): boolean {
+    let latest: { id: string; rejected: boolean } | undefined;
+    for (const event of this.ledger.getEvents(taskId)) {
+      if (event.type === "approval.requested" && event.payload.toolName === toolName) {
+        latest = { id: event.payload.approvalId, rejected: false };
+      }
+      if (event.type === "approval.resolved" && event.payload.approvalId === latest?.id) {
+        latest = { id: latest.id, rejected: event.payload.decision === "rejected" };
+      }
+    }
+    return latest?.rejected === true;
+  }
+
+  /** The most recent approved approval id for a tool, if any. */
+  private latestApprovalFor(taskId: string, toolName: string): string | undefined {
+    let found: string | undefined;
+    for (const event of this.ledger.getEvents(taskId)) {
+      if (event.type === "approval.requested" && event.payload.toolName === toolName) {
+        found = event.payload.approvalId;
+      }
+      if (event.type === "approval.resolved" && event.payload.decision === "rejected" && event.payload.approvalId === found) {
+        found = undefined;
+      }
+    }
+    return found;
   }
 
   private appendToolResult(taskId: string, sessionId: string, callId: string, result: ToolExecutionResult): RuntimeEvent {

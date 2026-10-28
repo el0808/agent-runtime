@@ -1,5 +1,5 @@
 import type { JsonObject, RuntimeEvent } from "@agent/protocol";
-import type { AssistantToolCall, ChatMessage } from "./provider.js";
+import { userMessage, type AssistantToolCall, type ChatMessage } from "./provider.js";
 
 function resultText(payload: JsonObject): string {
   return JSON.stringify(payload);
@@ -9,9 +9,10 @@ function resultText(payload: JsonObject): string {
  * Rebuilds the chat history for a task from its event log.
  *
  * Everything needed is already recorded — assistant text on `model.completed`,
- * tool requests on `tool.requested`, and results on `tool.completed`/`failed`/
- * `timed_out`/`cancelled` — so a resumed task continues its conversation instead
- * of replaying from the goal. Nothing extra is written to the ledger.
+ * tool requests on `tool.requested`, results on `tool.completed`/`failed`/
+ * `timed_out`/`cancelled`, and follow-up user turns on `user.message` — so a
+ * resumed task continues its conversation instead of replaying from the goal.
+ * Nothing extra is written to the ledger.
  */
 export function rebuildConversation(events: readonly RuntimeEvent[], goal: string): ChatMessage[] {
   const messages: ChatMessage[] = [{ role: "user", content: goal }];
@@ -19,6 +20,10 @@ export function rebuildConversation(events: readonly RuntimeEvent[], goal: strin
 
   for (const event of events) {
     switch (event.type) {
+      case "user.message": {
+        messages.push(userMessage(event.payload.text, event.payload.images ?? []));
+        break;
+      }
       case "model.completed": {
         if (event.payload.text === "") {
           break;

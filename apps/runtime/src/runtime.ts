@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-import { RUNNER_TYPES, RUNTIME_EVENT_TYPES } from "@agent/protocol";
+import { ERROR_CODES, RUNNER_TYPES, RUNTIME_EVENT_TYPES, RuntimeError } from "@agent/protocol";
 
 /** Runner ids in declaration order, offered to a decision provider as options. */
 const RUNNER_TYPES_VALUES: readonly RunnerType[] = Object.values(RUNNER_TYPES);
@@ -9,7 +9,7 @@ const RUNNER_TYPES_VALUES: readonly RunnerType[] = Object.values(RUNNER_TYPES);
 function isRunnerType(value: string): value is RunnerType {
   return (RUNNER_TYPES_VALUES as readonly string[]).includes(value);
 }
-import type { JsonObject, RunnerType, RuntimeEvent, TaskProfile, TaskState, VerificationResult } from "@agent/protocol";
+import type { JsonObject, RunnerType, RuntimeEvent, TaskProfile, TaskState, UserImage, VerificationResult } from "@agent/protocol";
 import { ContextCompressor, MemoryStore } from "@agent/memory";
 import { ApprovalManager, CompensationRegistry, GuardedToolExecutor, PolicyToolExecutor, RecoveryManager, ToolPermissionPolicy } from "@agent/policy";
 import { BackgroundRunner, DecisionRouter, JevDecisionProvider, MultiAgentRunner, PlannerExecutorVerifierRunner, RunnerRouter, StateGraphRunner, TransactionalRunner, jevTransportFromEnv, type JevTransport } from "@agent/routing";
@@ -70,7 +70,19 @@ export class AgentRuntime {
     this.approvals = new ApprovalManager();
     this.recovery = new RecoveryManager(this.ledger);
     this.tools = new ToolRegistry();
-    registerBuiltinTools(this.tools);
+    registerBuiltinTools(this.tools, {
+      allowOutsideWorkspace: this.config.allowOutsideWorkspace === true,
+      // The same store the runner recalls from, so a fact the model saves is
+      // available to the very next task.
+      remember: ({ key, content, scope }) => {
+        const existing = this.memory.search(key, scope)[0];
+        if (existing !== undefined) {
+          this.memory.update(existing.memoryId, { content }, existing.version);
+        } else {
+          this.memory.create({ key, content, scope, source: "agent" });
+        }
+      }
+    });
 
     const guarded = new GuardedToolExecutor(
       this.tools,
@@ -92,6 +104,7 @@ export class AgentRuntime {
       memory: this.memory,
       compressor: new ContextCompressor(),
       contextTokenBudget: this.config.contextTokenBudget,
+      ...(this.config.reasoningEffort === undefined ? {} : { reasoningEffort: this.config.reasoningEffort }),
       ...(this.config.pricing === undefined ? {} : { pricing: this.config.pricing }),
       memoryScope: { scope: "project" }
     });
@@ -208,6 +221,28 @@ export class AgentRuntime {
 
   replay(taskId: string): TaskState {
     return this.ledger.replayTask(taskId);
+  }
+
+  /**
+   * Appends a follow-up user turn to an existing conversation and reopens it.
+   * The prior turns stay in the ledger, so the next run continues the same
+   * conversation instead of starting a new task the way a fresh goal would.
+   */
+  sendMessage(taskId: string, text: string, images: readonly UserImage[] = []): void {
+    if (text.trim() === "" && images.length === 0) {
+      throw new RuntimeError({ code: ERROR_CODES.INVALID_INPUT, message: "A message cannot be empty" });
+    }
+    const state = this.ledger.getTask(taskId);
+    if (state === undefined) {
+      throw new RuntimeError({ code: ERROR_CODES.TASK_NOT_FOUND, message: `Task ${taskId} was not found` });
+    }
+    this.ledger.appendEvent({
+      eventId: randomUUID(),
+      taskId,
+      type: RUNTIME_EVENT_TYPES.USER_MESSAGE,
+      payload: { text, ...(images.length === 0 ? {} : { images }) }
+    });
+    this.events.emit(this.ledger.getEvents(taskId).at(-1) as RuntimeEvent);
   }
 
   pendingApprovals(taskId: string): readonly string[] {

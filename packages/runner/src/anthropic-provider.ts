@@ -78,6 +78,17 @@ export function toAnthropicPayload(messages: readonly ChatMessage[], model: stri
       converted.push({ role: "assistant", content: blocks.length === 0 ? message.content : blocks });
       continue;
     }
+    if ((message.parts?.length ?? 0) > 0) {
+      converted.push({
+        role: "user",
+        content: (message.parts ?? []).map((part) =>
+          part.type === "text"
+            ? { type: "text", text: part.text }
+            : { type: "image", source: { type: "base64", media_type: part.mediaType, data: part.data } }
+        )
+      });
+      continue;
+    }
     converted.push({ role: "user", content: message.content });
   }
 
@@ -107,12 +118,37 @@ export class AnthropicProvider implements ModelProvider {
     this.temperature = options.temperature;
   }
 
+  /** Lists the models the endpoint advertises. */
+  async listModels(signal?: AbortSignal): Promise<{ id: string; contextLength?: number }[]> {
+    const response = await fetch(`${this.baseUrl}/models`, {
+      headers: { "x-api-key": this.apiKey, "anthropic-version": this.version },
+      ...(signal === undefined ? {} : { signal })
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw new RuntimeError({
+        code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+        message: `Could not list models (${response.status}): ${detail.slice(0, 200)}`,
+        details: { status: response.status }
+      });
+    }
+    const body = (await response.json()) as { data?: { id?: string }[] };
+    return (body.data ?? [])
+      .map((entry) => ({ id: typeof entry.id === "string" ? entry.id : "" }))
+      .filter((entry) => entry.id !== "")
+      .sort((a, b) => a.id.localeCompare(b.id));
+  }
+
   async *chat(request: ModelRequest, signal: AbortSignal): AsyncIterable<ModelStreamEvent> {
     const body: JsonObject = {
       ...toAnthropicPayload(request.messages, request.model, this.maxTokens),
       stream: true,
       ...(request.tools.length === 0 ? {} : { tools: toAnthropicTools(request.tools) as unknown as JsonObject[] }),
-      ...(request.temperature === undefined ? {} : { temperature: request.temperature })
+      ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
+      // Extended thinking needs a token budget, and temperature must stay unset.
+      ...(request.reasoningEffort === undefined
+        ? {}
+        : { thinking: { type: "enabled", budget_tokens: { low: 1_024, medium: 4_096, high: 16_384 }[request.reasoningEffort] } })
     };
 
     const response = await fetch(`${this.baseUrl}/messages`, {

@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';" />
+    <title>Agent</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <!-- left rail: conversations -->
+    <aside id="rail">
+      <div id="rail-head">
+        <button id="new-chat" class="primary">
+          <span>＋</span><span>New conversation</span>
+        </button>
+        <div id="search-wrap">
+          <input id="search" type="search" placeholder="Search conversations" spellcheck="false" />
+        </div>
+      </div>
+      <div id="rail-label">Conversations</div>
+      <div id="conv-list"></div>
+      <div id="rail-foot">
+        <button id="btn-settings" class="ghost">Settings</button>
+        <button id="btn-storage" class="ghost">Storage</button>
+      </div>
+    </aside>
+
+    <!-- titlebar -->
+    <div id="titlebar">
+      <span id="conv-title">New conversation</span>
+      <span class="spacer"></span>
+      <span class="chip offline" id="provider-chip">
+        <span class="led"></span><span id="provider-label">connecting…</span>
+      </span>
+      <button id="btn-verify" class="sm" disabled title="Run deterministic verification">Verify</button>
+      <button id="btn-rollback" class="sm" disabled title="Restore the newest checkpoint">Rollback</button>
+      <button id="btn-cancel" class="sm err" disabled title="Cancel the running task">Stop</button>
+    </div>
+
+    <!-- center: conversation -->
+    <main id="main">
+      <div id="thread"><div class="thread-inner" id="thread-inner"></div></div>
+      <div id="composer-wrap">
+        <div id="composer">
+          <div id="attachments" hidden></div>
+          <textarea id="goal" rows="1" placeholder="Ask anything, or describe a task for the agent…" spellcheck="false"></textarea>
+          <div id="composer-bar">
+            <select id="runner" title="Runner type">
+              <option value="">Auto route</option>
+              <option value="direct">Direct</option>
+              <option value="planner-executor-verifier">Planner → Executor → Verifier</option>
+              <option value="state-graph">State graph</option>
+              <option value="background">Background</option>
+              <option value="transactional">Transactional</option>
+              <option value="multi-agent">Multi-agent</option>
+            </select>
+            <button id="attach" class="ghost" title="Attach an image">+
+              <input id="attach-input" type="file" accept="image/*" multiple hidden>
+            </button>
+            <span class="spacer"></span>
+            <span id="hint">↵ send · ⇧↵ newline · paste an image</span>
+            <button id="send" class="primary">Send</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- right: inspector -->
+    <aside id="aside">
+      <div id="tabs">
+        <button data-pane="activity" class="active">Activity</button>
+        <button data-pane="approvals">Approvals<span class="badge-count" id="approval-count" hidden>0</span></button>
+        <button data-pane="memory">Memory</button>
+        <button data-pane="tools">Tools</button>
+      </div>
+
+      <div class="pane" data-pane="activity" id="pane-activity">
+        <div class="empty-hint">Run a task to see its state, cost and verification.</div>
+      </div>
+
+      <div class="pane" data-pane="approvals" id="pane-approvals" hidden>
+        <div class="empty-hint">Nothing waiting. Tool calls that need a decision appear here and pause the task.</div>
+      </div>
+
+      <div class="pane" data-pane="memory" id="pane-memory" hidden>
+        <div class="card">
+          <div class="title"><b>Add memory</b></div>
+          <div class="field">
+            <input id="mem-key" class="in" placeholder="Key, e.g. preferred language" />
+          </div>
+          <div class="field">
+            <textarea id="mem-content" class="in" rows="2" placeholder="What should the agent remember?"></textarea>
+          </div>
+          <div class="row">
+            <select id="mem-scope" class="in">
+              <option value="project">Project</option>
+              <option value="global">Global</option>
+              <option value="task">Task</option>
+              <option value="session">Session</option>
+            </select>
+            <button id="mem-add" class="primary sm">Save</button>
+          </div>
+        </div>
+        <div class="row" style="margin-bottom:10px">
+          <input id="mem-query" class="in" placeholder="Search memory" />
+          <button id="mem-search" class="sm">Find</button>
+        </div>
+        <div id="mem-results"></div>
+      </div>
+
+      <div class="pane" data-pane="tools" id="pane-tools" hidden></div>
+    </aside>
+
+    <!-- settings -->
+    <div id="overlay" hidden>
+      <div id="settings">
+        <header>
+          <h2>Settings</h2>
+          <span class="spacer"></span>
+          <button id="settings-close" class="ghost sm">Close</button>
+        </header>
+        <div id="settings-body">
+          <div class="section">
+            <h3>Model</h3>
+            <div class="field">
+              <label for="set-provider">Provider</label>
+              <select id="set-provider" class="in">
+                <option value="openai-compatible">OpenAI-compatible endpoint</option>
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="fake">Offline (no model calls)</option>
+              </select>
+              <div class="note">Offline runs a scripted model — useful for trying the interface without a key.</div>
+            </div>
+            <div class="field">
+              <label for="set-model">Model</label>
+              <div class="row">
+                <input id="set-model" class="in" placeholder="gpt-6.1-sol" list="model-options" />
+                <button id="fetch-models" class="sm">Fetch</button>
+              </div>
+              <datalist id="model-options"></datalist>
+              <div class="note" id="model-status">Fetch lists the models the endpoint actually serves.</div>
+            </div>
+            <div class="field">
+              <label for="set-effort">Thinking effort</label>
+              <select id="set-effort" class="in">
+                <option value="low">Low — fastest, shallowest</option>
+                <option value="medium">Medium — balanced</option>
+                <option value="high">High — slowest, most thorough</option>
+              </select>
+              <div class="note">Passed to providers that support it. Higher costs more and takes longer.</div>
+            </div>
+            <div class="field" id="base-url-field">
+              <label for="set-base-url">Base URL</label>
+              <input id="set-base-url" class="in" placeholder="https://api.example.com/v1" />
+              <div class="note">Must include the version segment, e.g. <code>/v1</code>.</div>
+            </div>
+            <div class="field">
+              <label for="set-key">API key</label>
+              <div class="row">
+                <input id="set-key" class="in" type="password" placeholder="sk-…" autocomplete="off" spellcheck="false" />
+                <button id="set-key-save" class="sm">Save</button>
+              </div>
+              <div class="note" id="key-status">Stored in the macOS Keychain, never in the repo.</div>
+            </div>
+          </div>
+
+          <div class="section">
+            <h3>Workspace</h3>
+            <div class="field">
+              <label for="set-workspace">Folder the agent may read and write</label>
+              <div class="row">
+                <input id="set-workspace" class="in" readonly placeholder="Not set" />
+                <button id="set-workspace-pick" class="sm">Choose…</button>
+              </div>
+              <div class="note">File tools are confined to this folder. Paths escaping it are rejected.</div>
+            </div>
+          </div>
+
+          <div class="section">
+            <h3>Behaviour</h3>
+            <div class="field">
+              <label class="switch">
+                <input id="set-auto-approve" type="checkbox" />
+                <span class="txt">Auto-approve file writes</span>
+              </label>
+              <div class="note">Off by default: writes pause for your approval, and an approval is remembered for the rest of that task.</div>
+            </div>
+            <div class="field">
+              <label class="switch">
+                <input id="set-outside" type="checkbox" />
+                <span class="txt">Allow access outside the workspace</span>
+              </label>
+              <div class="note">Off by default. When on, the agent can read files and run commands anywhere on your disk, not just the workspace folder.</div>
+            </div>
+            <div class="field">
+              <label class="switch">
+                <input id="set-voice" type="checkbox" />
+                <span class="txt">Read replies aloud</span>
+              </label>
+            </div>
+            <div class="field">
+              <label class="switch">
+                <input id="set-enter" type="checkbox" />
+                <span class="txt">Enter sends the message</span>
+              </label>
+            </div>
+            <div class="row">
+              <div class="field" style="flex:1">
+                <label for="set-max-turns">Max tool turns per request</label>
+                <input id="set-max-turns" class="in" type="number" min="1" max="200" />
+              </div>
+              <div class="field" style="flex:1">
+                <label for="set-budget">Context budget (tokens)</label>
+                <input id="set-budget" class="in" type="number" min="1000" step="1000" />
+              </div>
+            </div>
+          </div>
+
+          <div class="section">
+            <h3>Cost reporting</h3>
+            <div class="row">
+              <div class="field" style="flex:1">
+                <label for="set-in-price">Input $ / 1M tokens</label>
+                <input id="set-in-price" class="in" type="number" min="0" step="0.1" />
+              </div>
+              <div class="field" style="flex:1">
+                <label for="set-out-price">Output $ / 1M tokens</label>
+                <input id="set-out-price" class="in" type="number" min="0" step="0.1" />
+              </div>
+            </div>
+            <div class="note">Used only to show cost. Set input price to 0 to hide it.</div>
+          </div>
+        </div>
+        <footer>
+          <button id="settings-done" class="primary">Done</button>
+        </footer>
+      </div>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
