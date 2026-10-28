@@ -15,7 +15,14 @@ export type RunnerType = (typeof RUNNER_TYPES)[keyof typeof RUNNER_TYPES];
 
 export const TASK_STATUSES = {
   PENDING: "pending",
+  /** A planner is deciding what the task needs before any tool runs. */
+  PLANNING: "planning",
   RUNNING: "running",
+  /** Work is stopped because something external must happen first: an approval. */
+  WAITING: "waiting",
+  /** A verifier is checking the result against evidence. */
+  VERIFYING: "verifying",
+  /** Paused on purpose by the user, as opposed to waiting on an approval. */
   PAUSED: "paused",
   COMPLETED: "completed",
   FAILED: "failed",
@@ -77,6 +84,11 @@ export interface TaskStateSnapshot {
   lastEventSequence: number;
   lastCheckpointId?: string;
   verification?: VerificationResult;
+  /**
+   * Where to return after verifying. Set when verification was started on an
+   * already-finished task, so checking a completed task does not reopen it.
+   */
+  verificationReturnStatus?: TaskStatus;
   error?: TaskFailure;
 }
 
@@ -95,11 +107,14 @@ export const RUNTIME_EVENT_TYPES = {
   TASK_CREATED: "task.created",
   TASK_STARTED: "task.started",
   TASK_PAUSED: "task.paused",
+  TASK_WAITING: "task.waiting",
   TASK_RESUMED: "task.resumed",
   TASK_COMPLETED: "task.completed",
   TASK_FAILED: "task.failed",
   TASK_CANCELLED: "task.cancelled",
   TASK_STEP_COMPLETED: "task.step_completed",
+  PLAN_CREATED: "plan.created",
+  VERIFICATION_STARTED: "verification.started",
   USER_MESSAGE: "user.message",
   CHECKPOINT_CREATED: "checkpoint.created",
   CHECKPOINT_RESTORED: "checkpoint.restored",
@@ -136,6 +151,11 @@ export interface TaskStartedPayload {
   reason?: string;
 }
 
+/** Blocked on something outside the run, typically a human approval. */
+export interface TaskWaitingPayload {
+  reason?: string;
+}
+
 export interface TaskPausedPayload {
   reason?: string;
 }
@@ -169,6 +189,17 @@ export interface UserMessagePayload {
   images?: readonly UserImage[];
 }
 
+/** The steps a planner produced, recorded before any of them run. */
+export interface PlanCreatedPayload {
+  steps: readonly string[];
+  reason?: string;
+}
+
+/** A verifier is about to check the result, so the task is no longer running. */
+export interface VerificationStartedPayload {
+  reason?: string;
+}
+
 export interface TaskStepCompletedPayload {
   step: string;
   index: number;
@@ -193,7 +224,7 @@ export interface SessionStartedPayload {
 
 export interface SessionEndedPayload {
   sessionId: string;
-  status: "completed" | "failed" | "cancelled" | "paused";
+  status: "completed" | "failed" | "cancelled" | "paused" | "waiting";
 }
 
 export interface ModelRequestedPayload {
@@ -352,11 +383,14 @@ export interface RuntimeEventByType {
   "task.created": RuntimeEventBase<"task.created", TaskCreatedPayload>;
   "task.started": RuntimeEventBase<"task.started", TaskStartedPayload>;
   "task.paused": RuntimeEventBase<"task.paused", TaskPausedPayload>;
+  "task.waiting": RuntimeEventBase<"task.waiting", TaskWaitingPayload>;
   "task.resumed": RuntimeEventBase<"task.resumed", TaskResumedPayload>;
   "task.completed": RuntimeEventBase<"task.completed", TaskCompletedPayload>;
   "task.failed": RuntimeEventBase<"task.failed", TaskFailedPayload>;
   "task.cancelled": RuntimeEventBase<"task.cancelled", TaskCancelledPayload>;
   "task.step_completed": RuntimeEventBase<"task.step_completed", TaskStepCompletedPayload>;
+  "plan.created": RuntimeEventBase<"plan.created", PlanCreatedPayload>;
+  "verification.started": RuntimeEventBase<"verification.started", VerificationStartedPayload>;
   "user.message": RuntimeEventBase<"user.message", UserMessagePayload>;
   "checkpoint.created": RuntimeEventBase<"checkpoint.created", CheckpointCreatedPayload>;
   "checkpoint.restored": RuntimeEventBase<"checkpoint.restored", CheckpointRestoredPayload>;

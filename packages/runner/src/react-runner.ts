@@ -56,6 +56,8 @@ export interface ReActRunnerOptions {
   readonly maxTurns?: number;
   /** How hard the model should think, forwarded on every request. */
   readonly reasoningEffort?: "low" | "medium" | "high";
+  /** Narrower responsibility for this runner, used by multi-agent roles. */
+  readonly role?: { readonly name: string; readonly instruction: string };
   /** Defaults to `tools`. Pass a policy-enforcing executor to gate tool calls. */
   readonly executor?: ToolExecutor;
   readonly memory?: MemoryReader;
@@ -111,6 +113,12 @@ export function keywordsOf(goal: string): string[] {
   return [...terms].slice(0, 8);
 }
 
+/**
+ * Compact once the context passes this share of the budget. Below 1 so there is
+ * room for the next reply instead of compacting only when nothing fits.
+ */
+const COMPRESSION_TRIGGER_RATIO = 0.6;
+
 function estimateTokens(messages: readonly ChatMessage[]): number {
   return messages.reduce((sum, message) => sum + Math.max(1, Math.ceil(message.content.length / 4)), 0);
 }
@@ -159,6 +167,9 @@ export class ReActRunner implements Runner {
   private readonly toolTimeoutMs: number;
   private readonly maxTurns: number;
   private readonly reasoningEffort: "low" | "medium" | "high" | undefined;
+  private readonly role: { readonly name: string; readonly instruction: string } | undefined;
+  /** Token count right after the last compaction, used to avoid re-summarising. */
+  private lastCompressedAt = 0;
   private readonly executor: ToolExecutor;
   private readonly memory: MemoryReader | undefined;
   private readonly compressor: ContextCompressor | undefined;
@@ -176,6 +187,7 @@ export class ReActRunner implements Runner {
     this.toolTimeoutMs = options.toolTimeoutMs ?? 30_000;
     this.maxTurns = options.maxTurns ?? 8;
     this.reasoningEffort = options.reasoningEffort;
+    this.role = options.role;
     this.executor = options.executor ?? options.tools;
     this.memory = options.memory;
     this.compressor = options.compressor;
@@ -191,14 +203,19 @@ export class ReActRunner implements Runner {
   }
 
   /** Executes one ReAct pass per plan step and records `task.step_completed` for each. */
-  async *runPlan(taskId: string, plan: readonly string[]): AsyncIterable<RuntimeEvent> {
+  /**
+   * Runs a plan. `finalize: false` leaves the task open so another agent can
+   * continue it, which is how multi-agent runs hand work from role to role
+   * without the first role ending the whole task.
+   */
+  async *runPlan(taskId: string, plan: readonly string[], options: { readonly finalize?: boolean } = {}): AsyncIterable<RuntimeEvent> {
     if (plan.length === 0) {
       throw new RuntimeError({ code: ERROR_CODES.INVALID_INPUT, message: "Planner returned no steps" });
     }
-    yield* this.execute(taskId, plan);
+    yield* this.execute(taskId, plan, options.finalize !== false);
   }
 
-  private async *execute(taskId: string, plan: readonly string[]): AsyncIterable<RuntimeEvent> {
+  private async *execute(taskId: string, plan: readonly string[], finalize = true): AsyncIterable<RuntimeEvent> {
     const task = this.ledger.getTask(taskId);
     if (task === undefined) {
       throw new RuntimeError({ code: ERROR_CODES.TASK_NOT_FOUND, message: `Task ${taskId} was not found` });
@@ -217,7 +234,7 @@ export class ReActRunner implements Runner {
     try {
       if (task.status === TASK_STATUSES.PENDING) {
         yield this.append(eventInput({ eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.TASK_STARTED, payload: {} }));
-      } else if (task.status === TASK_STATUSES.PAUSED) {
+      } else if (task.status === TASK_STATUSES.PAUSED || task.status === TASK_STATUSES.WAITING) {
         yield this.append(eventInput({ eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.TASK_RESUMED, payload: {} }));
       }
       yield this.append(eventInput({ eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.SESSION_STARTED, payload: { sessionId } }));
@@ -227,7 +244,8 @@ export class ReActRunner implements Runner {
           role: "system",
           content: buildSystemPrompt({
             ...(this.workspaceRoot === undefined ? {} : { workspaceRoot: this.workspaceRoot }),
-            toolNames: this.tools.list().map((tool) => tool.name)
+            toolNames: this.tools.list().map((tool) => tool.name),
+            ...(this.role === undefined ? {} : { role: this.role })
           })
         }
       ];
@@ -236,13 +254,29 @@ export class ReActRunner implements Runner {
         baseMessages.push({ role: "system", content: `Relevant memory from earlier tasks:\n${memory}` });
       }
 
+      if (plan.length > 0) {
+        // Record the plan first: the task is in planning, not running, until
+        // the first step actually starts.
+        yield this.append(eventInput({
+          eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.PLAN_CREATED,
+          payload: { steps: plan, reason: "planner produced steps" }
+        }));
+        yield this.append(eventInput({ eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.TASK_RESUMED, payload: { reason: "plan ready" } }));
+      }
+
       if (plan.length === 0) {
         // A resume after an approval replays the calls the gate blocked, so the
         // side effect happens before the model is asked anything else.
-        if (task.status === TASK_STATUSES.PAUSED) {
+        // Waiting is what an approval gate produces; paused is the user's own
+        // pause. Both must replay the call that was blocked.
+        if (task.status === TASK_STATUSES.PAUSED || task.status === TASK_STATUSES.WAITING) {
           const replayed = yield* this.replayGrantedCalls(taskId, sessionId, controller);
           if (replayed) {
             const after = this.ledger.getTask(taskId);
+            if (after?.status === TASK_STATUSES.WAITING) {
+              yield this.append(eventInput({ eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.SESSION_ENDED, payload: { sessionId, status: "waiting" } }));
+              return;
+            }
             if (after?.status === TASK_STATUSES.PAUSED) {
               yield this.append(eventInput({ eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.SESSION_ENDED, payload: { sessionId, status: "paused" } }));
               return;
@@ -279,6 +313,12 @@ export class ReActRunner implements Runner {
           }));
         }
         const completed = (this.ledger.getTask(taskId)?.completedSteps ?? []).join("; ");
+        if (!finalize) {
+          // Another role continues this task; ending it here would make the
+          // next role fail with an invalid state transition.
+          yield this.append(eventInput({ eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.SESSION_ENDED, payload: { sessionId, status: "completed" } }));
+          return;
+        }
         yield this.append(eventInput({ eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.TASK_COMPLETED, payload: { summary: completed } }));
         yield this.append(eventInput({ eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.SESSION_ENDED, payload: { sessionId, status: "completed" } }));
         return;
@@ -297,7 +337,13 @@ export class ReActRunner implements Runner {
       yield this.append(eventInput({ eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.SESSION_ENDED, payload: { sessionId, status: "failed" } }));
       return;
     }
-    const endingStatus = latest?.status === TASK_STATUSES.PAUSED ? "paused" : latest?.status === TASK_STATUSES.CANCELLED ? "cancelled" : "failed";
+    const endingStatus = latest?.status === TASK_STATUSES.PAUSED
+      ? "paused"
+      : latest?.status === TASK_STATUSES.WAITING
+        ? "waiting"
+        : latest?.status === TASK_STATUSES.CANCELLED
+          ? "cancelled"
+          : "failed";
     if (endingStatus === "failed") {
       yield* this.failTask(taskId, sessionId, { code: ERROR_CODES.INTERNAL, message: "Maximum turns reached or run aborted", retryable: true });
     }
@@ -433,8 +479,9 @@ export class ReActRunner implements Runner {
         // A pending approval is a human gate: stop here instead of letting the
         // model declare success without performing the side effect.
         if (result.status === "failed" && result.error.code === ERROR_CODES.PERMISSION_DENIED && result.error.details?.approvalId !== undefined) {
+          // Waiting on a human is a different state from being paused by one.
           yield this.append(eventInput({
-            eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.TASK_PAUSED,
+            eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.TASK_WAITING,
             payload: { reason: `approval required for ${call.toolName}` }
           }));
           return "aborted";
@@ -508,8 +555,23 @@ export class ReActRunner implements Runner {
     return lines.length === 0 ? "" : ["Known context:", ...lines].join("\n");
   }
 
+  /**
+   * Compacts before the budget is reached, not at it.
+   *
+   * Waiting for the limit means the next turn is the one that cannot fit, and
+   * the model is handed a truncated history at the worst moment. Compressing
+   * once usage passes the trigger leaves headroom for the reply.
+   */
   private async *maybeCompress(taskId: string, messages: ChatMessage[]): AsyncGenerator<RuntimeEvent> {
-    if (this.compressor === undefined || estimateTokens(messages) <= this.contextTokenBudget) {
+    if (this.compressor === undefined) {
+      return;
+    }
+    const used = estimateTokens(messages);
+    const trigger = Math.floor(this.contextTokenBudget * COMPRESSION_TRIGGER_RATIO);
+    // Growth since the last compaction decides when to run again, so a
+    // compressed conversation is not re-summarised on every single turn.
+    const shouldCompress = used > trigger && (this.lastCompressedAt === 0 || used > this.lastCompressedAt * 1.25);
+    if (!shouldCompress) {
       return;
     }
     const result = await this.compressor.compress(messages);
@@ -520,6 +582,7 @@ export class ReActRunner implements Runner {
     messages.length = 0;
     messages.push({ role: "system", content: result.summary });
     messages.push(...tail);
+    this.lastCompressedAt = estimateTokens(messages);
     yield this.append(eventInput({
       eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.CONTEXT_COMPRESSED,
       payload: {
@@ -544,7 +607,7 @@ export class ReActRunner implements Runner {
 
   async resume(taskId: string): Promise<void> {
     const state = this.ledger.getTask(taskId);
-    if (state?.status !== TASK_STATUSES.PAUSED) {
+    if (state?.status !== TASK_STATUSES.PAUSED && state?.status !== TASK_STATUSES.WAITING) {
       throw new RuntimeError({ code: ERROR_CODES.INVALID_STATE_TRANSITION, message: `Task ${taskId} is not paused` });
     }
     this.ledger.appendEvent({ eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.TASK_RESUMED, payload: {} });

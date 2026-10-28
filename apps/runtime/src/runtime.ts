@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-import { ERROR_CODES, RUNNER_TYPES, RUNTIME_EVENT_TYPES, RuntimeError } from "@agent/protocol";
+import { ERROR_CODES, RUNNER_TYPES, RUNTIME_EVENT_TYPES, TASK_STATUSES, RuntimeError } from "@agent/protocol";
 
 /** Runner ids in declaration order, offered to a decision provider as options. */
 const RUNNER_TYPES_VALUES: readonly RunnerType[] = Object.values(RUNNER_TYPES);
@@ -55,6 +55,8 @@ export class AgentRuntime {
   readonly react: ReActRunner;
   /** Which model provider was selected and whether it uses real credentials. */
   readonly providerSelection: ProviderSelection;
+  private readonly guarded: GuardedToolExecutor;
+  private readonly provider: ModelProvider;
   private readonly sync: LedgerSyncAdapter;
   private readonly memorySync: MemorySyncAdapter;
 
@@ -91,32 +93,36 @@ export class AgentRuntime {
         autoApproveMedium: this.config.autoApproveMedium
       }),
       this.approvals,
-      this.ledger
+      this.ledger,
+      this.compensations
     );
 
-    this.react = new ReActRunner({
-      ledger: this.ledger,
-      provider: options.provider ?? this.providerSelection.provider,
-      tools: this.tools,
-      workspaceRoot: this.config.workspaceRoot,
-      toolTimeoutMs: this.config.toolTimeoutMs,
-      executor: new PolicyToolExecutor(guarded),
-      memory: this.memory,
-      compressor: new ContextCompressor(),
-      contextTokenBudget: this.config.contextTokenBudget,
-      ...(this.config.reasoningEffort === undefined ? {} : { reasoningEffort: this.config.reasoningEffort }),
-      ...(this.config.pricing === undefined ? {} : { pricing: this.config.pricing }),
-      memoryScope: { scope: "project" }
-    });
+    this.guarded = guarded;
+    this.provider = options.provider ?? this.providerSelection.provider;
+    this.react = this.buildRunner(this.provider);
 
     this.router = new RunnerRouter({
       ledger: this.ledger,
       react: this.react,
       planner: new PlannerExecutorVerifierRunner(this.react, this.ledger),
       stateGraph: new StateGraphRunner(this.react, this.ledger),
-      background: new BackgroundRunner(this.react),
+      // A detached run keeps going after the caller stops reading events.
+      // It drains the ReAct runner directly: calling back into run() would
+      // route through this same background runner and hand off again, forever.
+      background: new BackgroundRunner(this.react, this.ledger, (taskId) => {
+        void (async () => {
+          try {
+            for await (const event of this.react.run(taskId)) {
+              this.events.emit(event);
+            }
+          } catch {
+            // The ledger already records why it stopped.
+          }
+        })();
+      }),
       transactional: new TransactionalRunner(this.react, this.ledger, this.compensations),
-      multiAgent: new MultiAgentRunner(this.react, this.ledger, [])
+      // Each role gets its own runner and therefore its own system prompt.
+      multiAgent: new MultiAgentRunner(this.react, this.ledger, [], (role) => this.buildRunner(this.provider, role))
     });
 
     // An explicit transport wins; otherwise AGENT_JEV_URL enables the service.
@@ -128,7 +134,9 @@ export class AgentRuntime {
       ...(jevTransport === undefined ? {} : { jev: new JevDecisionProvider({ transport: jevTransport }) })
     });
 
-    this.verifier = new DeterministicVerifier(this.ledger);
+    this.verifier = new DeterministicVerifier(this.ledger, {
+      ...(this.config.workspaceRoot === undefined ? {} : { workspaceRoot: this.config.workspaceRoot })
+    });
     const identity = DeviceIdentityStore.loadOrCreate(paths.device);
     const syncStore = new LocalSyncStore(paths.sync);
     this.sync = new LedgerSyncAdapter(identity, syncStore);
@@ -144,6 +152,28 @@ export class AgentRuntime {
         hook({ type: event.type, taskId: event.taskId, sequence: event.sequence });
       });
     }
+  }
+
+  /**
+   * Builds a runner sharing every dependency. Roles differ only in their
+   * instruction, which is what makes a multi-agent run more than a rename.
+   */
+  private buildRunner(provider: ModelProvider, role?: { readonly name: string; readonly instruction: string }): ReActRunner {
+    return new ReActRunner({
+      ledger: this.ledger,
+      provider,
+      tools: this.tools,
+      workspaceRoot: this.config.workspaceRoot,
+      toolTimeoutMs: this.config.toolTimeoutMs,
+      executor: new PolicyToolExecutor(this.guarded),
+      memory: this.memory,
+      compressor: new ContextCompressor(),
+      contextTokenBudget: this.config.contextTokenBudget,
+      ...(this.config.reasoningEffort === undefined ? {} : { reasoningEffort: this.config.reasoningEffort }),
+      ...(this.config.pricing === undefined ? {} : { pricing: this.config.pricing }),
+      memoryScope: { scope: "project" },
+      ...(role === undefined ? {} : { role })
+    });
   }
 
   createTask(profile: TaskProfile): TaskState {
@@ -163,15 +193,20 @@ export class AgentRuntime {
 
     // The rule router proposes a runner; when Jev is configured it gets a say.
     const proposed = this.router.route(taskId, failures);
+    // An explicit runner choice is the user's decision, not a suggestion: a
+    // decision provider may only pick between runners when the task was left on
+    // "auto route". Letting it override a chosen runner silently turned
+    // planner, multi-agent and background runs back into plain ReAct.
+    const autoRoute = state.profile.metadata?.autoRoute === true;
     const choice = await this.decisions.decide({
       taskId,
       goal: state.profile.goal,
       kind: "runner",
-      options: RUNNER_TYPES_VALUES,
+      options: autoRoute ? RUNNER_TYPES_VALUES : [state.profile.runnerType],
       risk: "low",
       failureCount: failures
     });
-    const selected = isRunnerType(choice.choice) ? choice.choice : proposed.runnerType;
+    const selected = autoRoute && isRunnerType(choice.choice) ? choice.choice : proposed.runnerType;
 
     if (selected !== proposed.runnerType) {
       this.ledger.appendEvent({
@@ -259,8 +294,25 @@ export class AgentRuntime {
     this.events.emit(this.ledger.getEvents(taskId).at(-1) as RuntimeEvent);
   }
 
-  verify(taskId: string): VerificationResult {
-    const result = this.verifier.verifyCompleted(taskId);
+  /**
+   * Checks the task against evidence — exit codes, tool outcomes, files on
+   * disk — not against what the model said about itself. The task moves through
+   * `verifying` while this runs so the UI can show that it is being checked.
+   */
+  async verify(taskId: string): Promise<VerificationResult> {
+    const state = this.ledger.getTask(taskId);
+    if (state === undefined) {
+      throw new RuntimeError({ code: ERROR_CODES.TASK_NOT_FOUND, message: `Task ${taskId} was not found` });
+    }
+    const started = state.status === TASK_STATUSES.RUNNING || state.status === TASK_STATUSES.COMPLETED;
+    if (started && state.status !== TASK_STATUSES.VERIFYING) {
+      this.ledger.appendEvent({
+        eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.VERIFICATION_STARTED,
+        payload: { reason: "verification requested" }
+      });
+      this.events.emit(this.ledger.getEvents(taskId).at(-1) as RuntimeEvent);
+    }
+    const result = await this.verifier.verifyTask(taskId);
     this.verifier.record(taskId, result);
     this.events.emit(this.ledger.getEvents(taskId).at(-1) as RuntimeEvent);
     return result;

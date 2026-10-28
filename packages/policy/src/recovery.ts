@@ -6,6 +6,8 @@ import type { TaskLedger } from "@agent/task-ledger";
 export interface CompensationAction {
   readonly compensationId: string;
   readonly name: string;
+  /** The task the effect belongs to; compensation only undoes that task's work. */
+  readonly taskId?: string;
   execute(): void | Promise<void>;
 }
 
@@ -16,7 +18,9 @@ export class CompensationRegistry {
 
   async executeAll(taskId: string, ledger: TaskLedger): Promise<readonly RuntimeEvent[]> {
     const events: RuntimeEvent[] = [];
-    for (const action of [...this.actions].reverse()) {
+    // A registry is shared across the runtime, so undo only this task's work.
+    const applicable = this.actions.filter((action) => action.taskId === undefined || action.taskId === taskId);
+    for (const action of [...applicable].reverse()) {
       try {
         await action.execute();
         events.push(ledger.appendEvent({ eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.COMPENSATION_EXECUTED, payload: { compensationId: action.compensationId, action: action.name, status: "succeeded" } }).event);

@@ -60,9 +60,40 @@ describe("AgentRuntime composition", () => {
     expect(state.status).toBe("completed");
     expect(state.completedSteps.length + 1).toBeGreaterThan(0);
 
-    const result = runtime.verify(taskId);
-    expect(result.status).toBe("passed");
+    const result = await runtime.verify(taskId);
+    // A conversation that ran no tools leaves no evidence to check, so the
+    // honest answer is inconclusive. Reporting "passed" here is what the old
+    // ledger-only verifier did, and it was the bug.
+    expect(result.status).toBe("inconclusive");
+    expect(result.checks.find((check) => check.name === "task-completed")?.status).toBe("passed");
+    expect(result.checks.find((check) => check.name === "tool-outcomes")?.status).toBe("inconclusive");
     expect(runtime.replay(taskId)).toEqual(runtime.getTask(taskId));
+    runtime.close();
+  });
+
+  it("verifies a task that really wrote a file as passed", async () => {
+    const provider = new FakeProvider([
+      {
+        events: [
+          { type: "tool_call", callId: "w1", toolName: "write_file", input: { path: "note.txt", content: "hecho" } },
+          { type: "completed", finishReason: "tool_call" }
+        ]
+      },
+      { events: [{ type: "delta", text: "done" }, { type: "completed", finishReason: "stop" }] }
+    ]);
+    const { runtime } = await setup(provider);
+    const taskId = "verified-task";
+    runtime.createTask({ taskId, goal: "write a note", runnerType: RUNNER_TYPES.DIRECT });
+
+    await runtime.runToCompletion(taskId);
+    for (const approvalId of runtime.pendingApprovals(taskId)) runtime.approve(taskId, approvalId);
+    await runtime.runToCompletion(taskId).catch(() => undefined);
+    expect(runtime.getTask(taskId)?.status).toBe("completed");
+
+    const result = await runtime.verify(taskId);
+    // The file is on disk, so the file-effects check has real evidence.
+    expect(result.status).toBe("passed");
+    expect(result.checks.find((check) => check.name === "file-effects")?.status).toBe("passed");
     runtime.close();
   });
 });

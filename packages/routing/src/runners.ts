@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { ERROR_CODES, RUNTIME_EVENT_TYPES, RuntimeError, TASK_STATUSES } from "@agent/protocol";
 import type { Runner, RuntimeEvent, TaskProfile, VerificationResult } from "@agent/protocol";
 import type { TaskLedger } from "@agent/task-ledger";
@@ -91,31 +92,80 @@ export class StateGraphRunner extends DelegatingRunner {
     if (state.status === TASK_STATUSES.PENDING) {
       this.ledger.appendEvent({ eventId: `graph-start-${taskId}`, taskId, type: RUNTIME_EVENT_TYPES.TASK_STARTED, payload: { reason: "state graph" } });
     }
-    if (this.nodes.size > 0) {
-      let current: string | undefined = this.startNode;
-      const visited = new Set<string>();
-      while (current !== undefined) {
-        if (visited.has(current)) throw new RuntimeError({ code: ERROR_CODES.INVALID_INPUT, message: "State graph contains a cycle" });
-        visited.add(current);
-        const node = this.nodes.get(current);
-        if (node === undefined) throw new RuntimeError({ code: ERROR_CODES.INVALID_INPUT, message: `State graph node ${current} is missing` });
-        current = await node.run(taskId, this.ledger);
+    // Nodes run before the model: a graph is for flows whose shape the host
+    // already knows, so the expensive loop only runs for what is left.
+    const steps: string[] = [];
+    let current: string | undefined = this.startNode;
+    const visited = new Set<string>();
+    while (current !== undefined) {
+      if (visited.has(current)) {
+        throw new RuntimeError({ code: ERROR_CODES.INVALID_INPUT, message: "State graph contains a cycle" });
       }
+      visited.add(current);
+      const node = this.nodes.get(current);
+      if (node === undefined) {
+        throw new RuntimeError({ code: ERROR_CODES.INVALID_INPUT, message: `State graph node ${current} is missing` });
+      }
+      const instruction = await node.run(taskId, this.ledger);
+      steps.push(current);
+      current = instruction;
+    }
+    if (steps.length > 0) {
+      yield this.ledger.appendEvent({
+        eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.PLAN_CREATED,
+        payload: { steps, reason: "state graph nodes" }
+      }).event;
     }
     yield* this.delegate.run(taskId);
   }
 }
 
+/**
+ * Long-running work that outlives the request that started it.
+ *
+ * The run is started detached and the caller keeps receiving its events through
+ * the runtime's event bus, so the UI can close the conversation while the work
+ * continues. Without a `start` hook there is nothing to detach into, and the
+ * task simply runs inline.
+ */
 export class BackgroundRunner extends DelegatingRunner {
-  private readonly queue = new Set<string>();
+  private readonly running = new Set<string>();
+  private readonly start: ((taskId: string) => void) | undefined;
+  private readonly ledger: TaskLedger;
+
+  constructor(delegate: ReActRunner, ledger: TaskLedger, start?: (taskId: string) => void) {
+    super(delegate);
+    this.ledger = ledger;
+    this.start = start;
+  }
+
   override async *run(taskId: string): AsyncIterable<RuntimeEvent> {
-    if (this.queue.has(taskId)) throw new RuntimeError({ code: ERROR_CODES.CONFLICT, message: `Task ${taskId} is already queued` });
-    this.queue.add(taskId);
-    try {
-      yield* this.delegate.run(taskId);
-    } finally {
-      this.queue.delete(taskId);
+    if (this.running.has(taskId)) {
+      throw new RuntimeError({ code: ERROR_CODES.CONFLICT, message: `Task ${taskId} is already running in the background` });
     }
+    if (this.start === undefined) {
+      yield* this.delegate.run(taskId);
+      return;
+    }
+    this.running.add(taskId);
+    this.start(taskId);
+    // The task keeps running; this generator ends after handing it off, so the
+    // caller is not held open for the duration of a long job.
+    yield* [];
+  }
+
+  override async cancel(taskId: string): Promise<void> {
+    await this.delegate.cancel(taskId);
+    this.running.delete(taskId);
+  }
+
+  /** Lets the composition root report when a detached run finished. */
+  release(taskId: string): void {
+    this.running.delete(taskId);
+  }
+
+  isRunning(taskId: string): boolean {
+    return this.running.has(taskId);
   }
 }
 
@@ -142,13 +192,53 @@ export class TransactionalRunner extends DelegatingRunner {
  * Runs plan steps across named agents in order. Each agent owns its own ReAct
  * runner, so a step is retried with that agent's provider and tool set.
  */
+export interface AgentRole {
+  readonly name: string;
+  /** What this role is for. It becomes its system prompt, not just a label. */
+  readonly instruction: string;
+}
+
+/**
+ * The default split for a task that needs several perspectives: one agent
+ * decides what to do, one does it, one checks it. They are separate ReAct
+ * runners, so each gets its own instruction and its own conversation.
+ */
+export const DEFAULT_ROLES: readonly AgentRole[] = [
+  {
+    name: "planner",
+    instruction:
+      "Break the goal into at most three concrete steps. Do not run tools that change anything; read what you need and reply with the ordered steps only."
+  },
+  {
+    name: "executor",
+    instruction:
+      "Carry out the steps you were given, using tools. Make one change at a time and confirm each result before moving on."
+  },
+  {
+    name: "reviewer",
+    instruction:
+      "Check the work against the original goal. Read the files that were meant to change and report whether they actually did. Do not change anything yourself."
+  }
+];
+
 export class MultiAgentRunner extends DelegatingRunner {
+  private readonly agents: readonly { readonly name: string; readonly runner: ReActRunner }[];
+
   constructor(
     delegate: ReActRunner,
     private readonly ledger: TaskLedger,
-    private readonly agents: readonly { readonly name: string; readonly runner: ReActRunner }[]
+    agents: readonly { readonly name: string; readonly runner: ReActRunner }[],
+    /** Builds a role runner, so the composition root can give each one its prompt. */
+    roleFactory?: (role: AgentRole) => ReActRunner
   ) {
     super(delegate);
+    // No agents and no factory used to mean the task silently ran as plain
+    // ReAct while the ledger still recorded it as multi-agent.
+    this.agents = agents.length > 0
+      ? agents
+      : roleFactory === undefined
+        ? []
+        : DEFAULT_ROLES.map((role) => ({ name: role.name, runner: roleFactory(role) }));
   }
 
   override async *run(taskId: string): AsyncIterable<RuntimeEvent> {
@@ -157,17 +247,23 @@ export class MultiAgentRunner extends DelegatingRunner {
       throw new RuntimeError({ code: ERROR_CODES.TASK_NOT_FOUND, message: `Task ${taskId} was not found` });
     }
     if (this.agents.length === 0) {
-      yield* this.delegate.run(taskId);
-      return;
+      throw new RuntimeError({
+        code: ERROR_CODES.INVALID_INPUT,
+        message: "Multi-agent routing needs at least one agent role registered"
+      });
     }
     const steps = defaultPlanner(state.profile);
+    yield this.ledger.appendEvent({
+      eventId: randomUUID(), taskId, type: RUNTIME_EVENT_TYPES.PLAN_CREATED,
+      payload: { steps, reason: `multi-agent roles: ${this.agents.map((agent) => agent.name).join(", ")}` }
+    }).event;
     const perAgent = Math.max(1, Math.ceil(steps.length / this.agents.length));
-    for (const [index, agent] of this.agents.entries()) {
+    const active = this.agents.filter((_, index) => steps.slice(index * perAgent, (index + 1) * perAgent).length > 0);
+    for (const [index, agent] of active.entries()) {
       const slice = steps.slice(index * perAgent, (index + 1) * perAgent);
-      if (slice.length === 0) {
-        continue;
-      }
-      for await (const event of agent.runner.runPlan(taskId, slice)) {
+      // Only the last role may finish the task; the others hand it on.
+      const isLast = index === active.length - 1;
+      for await (const event of agent.runner.runPlan(taskId, slice, { finalize: isLast })) {
         yield event;
       }
     }

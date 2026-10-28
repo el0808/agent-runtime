@@ -17,6 +17,17 @@ const state = {
 
 /* ---------------- helpers ---------------- */
 
+/** Short age for memory metadata: "2h ago" rather than a full timestamp. */
+function formatWhen(iso) {
+  const then = Date.parse(iso);
+  if (!Number.isFinite(then)) return "unknown";
+  const diff = Date.now() - then;
+  if (diff < 60_000) return "just now";
+  if (diff < 3_600_000) return `${Math.round(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.round(diff / 3_600_000)}h ago`;
+  return `${Math.round(diff / 86_400_000)}d ago`;
+}
+
 /** Compact duration for the worklog: 0.8s, 12s, 1m 04s. */
 function formatDuration(ms) {
   if (!Number.isFinite(ms) || ms < 0) return "—";
@@ -778,6 +789,9 @@ function selectPane(name) {
   }
   if (name === "tools") void refreshTools();
   if (name === "approvals") void refreshPending();
+  // Opening the memory tab lists what is stored; without this the panel stays
+  // empty until the user guesses a search term that matches something.
+  if (name === "memory") void searchMemory();
 }
 
 function wire() {
@@ -840,6 +854,35 @@ function wire() {
       status.textContent = `Could not fetch models: ${error?.message ?? error}`;
     } finally {
       button.disabled = false;
+    }
+  };
+
+  $("sync-export").onclick = async () => {
+    const status = $("sync-status");
+    status.textContent = "Exporting…";
+    try {
+      const result = await api.sync.export();
+      status.textContent = result.cancelled
+        ? "Export cancelled."
+        : `Exported ${result.tasks} conversations and ${result.memories} memories to ${result.path}.`;
+    } catch (error) {
+      status.textContent = `Export failed: ${error?.message ?? error}`;
+    }
+  };
+
+  $("sync-import").onclick = async () => {
+    const status = $("sync-status");
+    status.textContent = "Importing…";
+    try {
+      const result = await api.sync.import();
+      if (result.cancelled) {
+        status.textContent = "Import cancelled.";
+        return;
+      }
+      status.textContent = `Imported ${result.tasks} items and ${result.memories} memories.`;
+      await refreshTasks();
+    } catch (error) {
+      status.textContent = `Import failed: ${error?.message ?? error}`;
     }
   };
 
@@ -943,11 +986,38 @@ async function searchMemory() {
     title.append(el("span", "when", `${record.scope} · v${record.version}`));
     card.append(title);
     card.append(el("div", "body", record.content));
+
+    // Where a fact came from and how fresh it is decides whether to trust it,
+    // so these are shown rather than hidden behind the record.
+    const meta = el("div", "mem-meta");
+    meta.append(el("span", "", `from ${record.source ?? "unknown"}`));
+    meta.append(el("span", "", `confidence ${Math.round((record.confidence ?? 1) * 100)}%`));
+    meta.append(el("span", "", `updated ${formatWhen(record.updatedAt)}`));
+    if (record.expiresAt !== undefined) meta.append(el("span", "warn", `expires ${formatWhen(record.expiresAt)}`));
+    card.append(meta);
+
     const acts = el("div", "row");
     acts.style.marginTop = "8px";
+    const edit = el("button", "sm", "Edit");
+    edit.onclick = () => {
+      const area = document.createElement("textarea");
+      area.className = "in";
+      area.value = record.content;
+      const save = el("button", "primary sm", "Save");
+      const cancel = el("button", "ghost sm", "Cancel");
+      const editor = el("div", "mem-editor");
+      editor.append(area, save, cancel);
+      card.replaceChild(editor, card.querySelector(".body"));
+      save.onclick = () => {
+        void api.memory.update(record.memoryId, area.value, record.version)
+          .then(() => searchMemory())
+          .catch((error) => { $("mem-status").textContent = `Could not save: ${error?.message ?? error}`; });
+      };
+      cancel.onclick = () => void searchMemory();
+    };
     const del = el("button", "err sm", "Delete");
     del.onclick = () => void api.memory.delete(record.memoryId).then(searchMemory);
-    acts.append(del);
+    acts.append(edit, del);
     card.append(acts);
     box.append(card);
   }

@@ -8,6 +8,12 @@ export interface SystemPromptOptions {
   readonly workspaceRoot?: string;
   /** Tools actually registered this run; the model is told to stay inside them. */
   readonly toolNames?: readonly string[];
+  /**
+   * What this particular agent is responsible for. Multi-agent runs give each
+   * role a different instruction, which is the only thing that makes the roles
+   * more than a label on the same loop.
+   */
+  readonly role?: { readonly name: string; readonly instruction: string };
 }
 
 const BASE = `You are the assistant inside a desktop app that runs coding and operations tasks on the user's own machine.
@@ -34,6 +40,9 @@ export function buildSystemPrompt(options: SystemPromptOptions = {}): string {
   }
   if (options.toolNames !== undefined && options.toolNames.length > 0) {
     lines.push(`\nAvailable tools: ${[...options.toolNames].sort().join(", ")}`);
+  }
+  if (options.role !== undefined) {
+    lines.push(`\nYour role in this run is "${options.role.name}".\n${options.role.instruction}`);
   }
   return lines.join("\n");
 }

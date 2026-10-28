@@ -33,9 +33,14 @@ contextBridge.exposeInMainWorld("agent", {
       return () => ipcRenderer.removeListener("runtime:provider", handler);
     }
   },
+  sync: {
+    export: () => ipcRenderer.invoke("sync:export"),
+    import: () => ipcRenderer.invoke("sync:import")
+  },
   memory: {
     search: (query) => ipcRenderer.invoke("memory:search", query),
     list: (scope) => ipcRenderer.invoke("memory:list", scope),
+    update: (memoryId, content, expectedVersion) => ipcRenderer.invoke("memory:update", memoryId, content, expectedVersion),
     add: (key, content, scope) => ipcRenderer.invoke("memory:add", key, content, scope),
     delete: (memoryId) => ipcRenderer.invoke("memory:delete", memoryId)
   },

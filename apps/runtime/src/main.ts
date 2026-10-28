@@ -52,7 +52,7 @@ async function main(argv: readonly string[]): Promise<number> {
       return 2;
     }
     const runtime = new AgentRuntime();
-    const result = runtime.verify(taskId);
+    const result = await runtime.verify(taskId);
     process.stdout.write(`${result.status}: ${result.summary}\n`);
     runtime.close();
     return result.status === "passed" ? 0 : 1;

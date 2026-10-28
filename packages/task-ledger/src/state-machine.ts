@@ -215,14 +215,47 @@ export function applyRuntimeEvent(
       }
       return { ...next, status: TASK_STATUSES.RUNNING };
 
-    case RUNTIME_EVENT_TYPES.TASK_PAUSED:
+    // A plan is recorded before any step runs, so the task is visibly planning
+    // rather than reported as running with nothing happening.
+    case RUNTIME_EVENT_TYPES.PLAN_CREATED: {
+      // A runner may record its plan before starting (pending) or right after
+      // task.started (running), so both are legitimate entry points.
+      if (
+        state.status !== TASK_STATUSES.PENDING &&
+        state.status !== TASK_STATUSES.PLANNING &&
+        state.status !== TASK_STATUSES.RUNNING
+      ) {
+        invalidTransition(state.taskId, state.status, event.type);
+      }
+      // Already running means the plan arrived late; do not walk the status back.
+      const status = state.status === TASK_STATUSES.RUNNING ? TASK_STATUSES.RUNNING : TASK_STATUSES.PLANNING;
+      return { ...next, status, completedSteps: state.completedSteps };
+    }
+
+    // Waiting is a live state: the run is blocked on a human, not stopped.
+    case RUNTIME_EVENT_TYPES.TASK_WAITING: {
       if (state.status !== TASK_STATUSES.RUNNING) {
+        invalidTransition(state.taskId, state.status, event.type);
+      }
+      return { ...next, status: TASK_STATUSES.WAITING };
+    }
+
+    case RUNTIME_EVENT_TYPES.TASK_PAUSED:
+      if (state.status !== TASK_STATUSES.RUNNING && state.status !== TASK_STATUSES.WAITING) {
         invalidTransition(state.taskId, state.status, event.type);
       }
       return { ...next, status: TASK_STATUSES.PAUSED };
 
     case RUNTIME_EVENT_TYPES.TASK_RESUMED:
-      if (state.status !== TASK_STATUSES.PAUSED && state.status !== TASK_STATUSES.FAILED) {
+      if (
+        state.status !== TASK_STATUSES.PAUSED &&
+        state.status !== TASK_STATUSES.WAITING &&
+        state.status !== TASK_STATUSES.FAILED &&
+        state.status !== TASK_STATUSES.PLANNING &&
+        // A runner that records its plan while already running still calls this
+        // to leave planning; treating it as already-resumed keeps it idempotent.
+        state.status !== TASK_STATUSES.RUNNING
+      ) {
         invalidTransition(state.taskId, state.status, event.type);
       }
       {
@@ -231,8 +264,30 @@ export function applyRuntimeEvent(
         return resumed;
       }
 
+    // Verification is its own state: a task being checked is neither running
+    // nor finished, and the UI should say so.
+    case RUNTIME_EVENT_TYPES.VERIFICATION_STARTED: {
+      if (
+        state.status !== TASK_STATUSES.RUNNING &&
+        state.status !== TASK_STATUSES.PLANNING &&
+        state.status !== TASK_STATUSES.COMPLETED &&
+        state.status !== TASK_STATUSES.FAILED
+      ) {
+        invalidTransition(state.taskId, state.status, event.type);
+      }
+      // Checking a finished task is the common case (the user pressed Verify),
+      // so remember what to return to: a finished task must not be reopened.
+      return {
+        ...next,
+        status: TASK_STATUSES.VERIFYING,
+        ...(state.status === TASK_STATUSES.COMPLETED || state.status === TASK_STATUSES.FAILED
+          ? { verificationReturnStatus: state.status }
+          : {})
+      };
+    }
+
     case RUNTIME_EVENT_TYPES.TASK_COMPLETED: {
-      if (state.status !== TASK_STATUSES.RUNNING) {
+      if (state.status !== TASK_STATUSES.RUNNING && state.status !== TASK_STATUSES.VERIFYING) {
         invalidTransition(state.taskId, state.status, event.type);
       }
       const completedSteps = event.payload.completedSteps ?? state.completedSteps;
@@ -247,7 +302,15 @@ export function applyRuntimeEvent(
     }
 
     case RUNTIME_EVENT_TYPES.TASK_FAILED:
-      if (state.status !== TASK_STATUSES.RUNNING) {
+      // A run can fail from any live state, including while waiting on a human
+      // or while being verified; only terminal states are exempt.
+      if (
+        state.status !== TASK_STATUSES.RUNNING &&
+        state.status !== TASK_STATUSES.PLANNING &&
+        state.status !== TASK_STATUSES.WAITING &&
+        state.status !== TASK_STATUSES.VERIFYING &&
+        state.status !== TASK_STATUSES.PENDING
+      ) {
         invalidTransition(state.taskId, state.status, event.type);
       }
       return { ...next, status: TASK_STATUSES.FAILED, error: event.payload.error };
@@ -311,8 +374,17 @@ export function applyRuntimeEvent(
         lastCheckpointId: event.payload.checkpointId
       };
 
-    case RUNTIME_EVENT_TYPES.VERIFICATION_RECORDED:
-      return { ...next, verification: event.payload.result };
+    case RUNTIME_EVENT_TYPES.VERIFICATION_RECORDED: {
+      const recorded = { ...next, verification: event.payload.result };
+      // Checking is a phase, not an end: hand control back to whatever the task
+      // was doing, so verifying a finished task leaves it finished.
+      if (recorded.status === TASK_STATUSES.VERIFYING) {
+        const back = state.verificationReturnStatus ?? TASK_STATUSES.RUNNING;
+        recorded.status = back;
+        delete recorded.verificationReturnStatus;
+      }
+      return recorded;
+    }
 
     // A user turn reopens a finished conversation. The prior turns stay in the
     // log, so the model continues from its own history instead of starting over.

@@ -1,3 +1,4 @@
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 import type { RuntimeEvent } from "@agent/protocol";
@@ -179,6 +180,8 @@ ipcMain.handle("memory:search", (_event, query: string) => host.searchMemory(que
 
 ipcMain.handle("memory:list", (_event, scope?: "global" | "project" | "task" | "session") => host.listMemory(scope));
 
+ipcMain.handle("memory:update", (_event, memoryId: string, content: string, expectedVersion: number) => host.updateMemory(memoryId, content, expectedVersion));
+
 ipcMain.handle("memory:add", (_event, key: string, content: string, scope: "global" | "project" | "task" | "session") => {
   host.addMemory(key, content, scope);
   return { ok: true };
@@ -190,6 +193,37 @@ ipcMain.handle("memory:delete", (_event, memoryId: string) => {
 });
 
 ipcMain.handle("app:open-storage", () => shell.openPath(storageDir));
+
+// Sync moves a bundle between machines through a file the user picks, so no
+// server or account is involved.
+ipcMain.handle("sync:export", async () => {
+  const result = host.exportEverything();
+  const target = await dialog.showSaveDialog({
+    title: "Export tasks and memory",
+    defaultPath: `agent-profile-${new Date().toISOString().slice(0, 10)}.json`,
+    filters: [{ name: "Agent bundle", extensions: ["json"] }]
+  });
+  if (target.canceled || target.filePath === undefined) {
+    return { cancelled: true };
+  }
+  await writeFile(target.filePath, JSON.stringify(result.bundle, null, 2), "utf8");
+  return { cancelled: false, path: target.filePath, tasks: result.tasks, memories: result.memories };
+});
+
+ipcMain.handle("sync:import", async () => {
+  const picked = await dialog.showOpenDialog({
+    title: "Import tasks and memory",
+    properties: ["openFile"],
+    filters: [{ name: "Agent bundle", extensions: ["json"] }]
+  });
+  const file = picked.filePaths[0];
+  if (picked.canceled || file === undefined) {
+    return { cancelled: true };
+  }
+  const parsed = JSON.parse(await readFile(file, "utf8")) as { records?: readonly unknown[] };
+  const summary = host.importEverything(parsed);
+  return { cancelled: false, ...summary };
+});
 
 /* ---------------- lifecycle ---------------- */
 

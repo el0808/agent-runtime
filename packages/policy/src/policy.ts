@@ -3,6 +3,7 @@ import { RUNTIME_EVENT_TYPES, ERROR_CODES, RuntimeError } from "@agent/protocol"
 import type { JsonObject, TaskFailure, ToolCall } from "@agent/protocol";
 import type { TaskLedger } from "@agent/task-ledger";
 import type { ToolExecutionOptions, ToolExecutionResult, ToolRegistry } from "@agent/tools";
+import type { CompensationAction, CompensationRegistry } from "./recovery.js";
 
 export type RiskLevel = "low" | "medium" | "high" | "critical";
 export type PermissionOutcome = "allow" | "approval_required" | "deny";
@@ -204,7 +205,9 @@ export class GuardedToolExecutor {
     private readonly registry: ToolRegistry,
     private readonly policy: ToolPermissionPolicy,
     private readonly approvals: ApprovalManager,
-    private readonly ledger: TaskLedger
+    private readonly ledger: TaskLedger,
+    /** When present, file writes register an undo so rollback can restore them. */
+    private readonly compensations?: CompensationRegistry
   ) {}
 
   async execute(taskId: string, call: ToolCall, options: GuardedExecutionOptions = {}): Promise<ToolExecutionResult> {
@@ -221,6 +224,44 @@ export class GuardedToolExecutor {
     if (decision.risk === "medium" || decision.risk === "high") {
       this.ledger.createCheckpoint(taskId, { reason: "before-external-side-effect", toolName: call.toolName });
     }
-    return this.registry.execute(call.toolName, call.input, options);
+    // A checkpoint restores the task's state, not the disk. Recording the prior
+    // file contents is what lets rollback undo a write that really happened.
+    const undo = this.compensations === undefined ? undefined : await this.captureUndo(taskId, call, options);
+    const result = await this.registry.execute(call.toolName, call.input, options);
+    if (undo !== undefined && result.status === "succeeded") {
+      this.compensations?.register(undo);
+    }
+    return result;
+  }
+
+  /** Snapshots a file before it is overwritten, so rollback can put it back. */
+  private async captureUndo(
+    taskId: string,
+    call: ToolCall,
+    options: GuardedExecutionOptions
+  ): Promise<CompensationAction | undefined> {
+    if (call.toolName !== "write_file" && call.toolName !== "edit_file") {
+      return undefined;
+    }
+    const relative = typeof call.input.path === "string" ? call.input.path : "";
+    if (relative === "" || options.workspaceRoot === undefined) {
+      return undefined;
+    }
+    const { readFile, writeFile, unlink } = await import("node:fs/promises");
+    const path = await import("node:path");
+    const target = path.resolve(options.workspaceRoot, relative);
+    const before = await readFile(target, "utf8").catch(() => null);
+    return {
+      compensationId: randomUUID(),
+      name: `restore ${relative}`,
+      taskId,
+      execute: async () => {
+        if (before === null) {
+          await unlink(target).catch(() => undefined);
+        } else {
+          await writeFile(target, before, "utf8");
+        }
+      }
+    };
   }
 }

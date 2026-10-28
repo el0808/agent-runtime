@@ -12,6 +12,46 @@ export interface RuntimeHostOptions {
   readonly emit: (event: RuntimeEvent) => void;
 }
 
+/** Everything the memory panel shows: where a fact came from and how sure it is. */
+export interface MemoryView {
+  readonly memoryId: string;
+  readonly key: string;
+  readonly scope: string;
+  readonly content: string;
+  readonly version: number;
+  readonly source: string;
+  readonly confidence: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly expiresAt?: string;
+}
+
+function toMemoryView(record: {
+  readonly memoryId: string;
+  readonly key: string;
+  readonly scope: string;
+  readonly content: string;
+  readonly version: number;
+  readonly source: string;
+  readonly confidence: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly expiresAt?: string;
+}): MemoryView {
+  return {
+    memoryId: record.memoryId,
+    key: record.key,
+    scope: record.scope,
+    content: record.content,
+    version: record.version,
+    source: record.source,
+    confidence: record.confidence,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    ...(record.expiresAt === undefined ? {} : { expiresAt: record.expiresAt })
+  };
+}
+
 export interface TaskSummary {
   readonly taskId: string;
   readonly goal: string;
@@ -185,7 +225,14 @@ export class RuntimeHost {
   createAndRun(goal: string, images: readonly { mediaType: string; data: string }[] = [], runnerType?: RunnerType): { taskId: string } {
     const runtime = this.require();
     const taskId = newTaskId();
-    runtime.createTask({ taskId, goal, runnerType: runnerType ?? "direct" });
+    // No runner means "auto route": the task is marked so the runtime knows it
+    // may pick one, because an explicit choice must never be overridden.
+    runtime.createTask({
+      taskId,
+      goal,
+      runnerType: runnerType ?? "direct",
+      ...(runnerType === undefined ? { metadata: { autoRoute: true } } : {})
+    });
     // Images ride on a user turn so the ledger records what the model saw.
     // The text is left empty: the goal is already the opening turn, and
     // repeating it here would show the message twice in the transcript.
@@ -253,29 +300,23 @@ export class RuntimeHost {
   }
 
   async verify(taskId: string): Promise<{ status: string; summary: string; checks: unknown }> {
-    const result = this.require().verify(taskId);
+    const result = await this.require().verify(taskId);
     return { status: result.status, summary: result.summary, checks: result.checks };
   }
 
   /** Lists memory without a query, so the panel shows what the agent knows. */
-  listMemory(scope: "global" | "project" | "task" | "session" = "project"): readonly { memoryId: string; key: string; scope: string; content: string; version: number }[] {
-    return this.require().memory.list(scope, 100).map((record) => ({
-      memoryId: record.memoryId,
-      key: record.key,
-      scope: record.scope,
-      content: record.content,
-      version: record.version
-    }));
+  listMemory(scope: "global" | "project" | "task" | "session" = "project"): readonly MemoryView[] {
+    return this.require().memory.list(scope, 100).map(toMemoryView);
   }
 
-  searchMemory(query: string): readonly { memoryId: string; key: string; scope: string; content: string; version: number }[] {
-    return this.require().memory.search(query).map((record) => ({
-      memoryId: record.memoryId,
-      key: record.key,
-      scope: record.scope,
-      content: record.content,
-      version: record.version
-    }));
+  /** Edits one record, bumping its version so a stale edit is rejected. */
+  updateMemory(memoryId: string, content: string, expectedVersion: number): MemoryView {
+    const record = this.require().memory.update(memoryId, { content }, expectedVersion);
+    return toMemoryView(record);
+  }
+
+  searchMemory(query: string): readonly MemoryView[] {
+    return this.require().memory.search(query).map(toMemoryView);
   }
 
   addMemory(key: string, content: string, scope: "global" | "project" | "task" | "session"): void {
@@ -292,6 +333,36 @@ export class RuntimeHost {
       description: tool.description,
       parameters: tool.parameters
     }));
+  }
+
+  /**
+   * Packages this device's tasks and memory into one portable bundle.
+   *
+   * Exporting every task matters for moving machines: importing a single task
+   * leaves the conversation list looking empty on the new device.
+   */
+  exportEverything(): { readonly bundle: unknown; readonly tasks: number; readonly memories: number } {
+    const runtime = this.require();
+    const tasks = runtime.ledger.listTasks(500);
+    const records: unknown[] = [];
+    let memories = 0;
+    for (const task of tasks) {
+      records.push(...runtime.exportTask(task.taskId).records);
+    }
+    const memoryBundle = runtime.exportMemories();
+    records.push(...memoryBundle.records);
+    memories = memoryBundle.records.length;
+    return { bundle: { sourceDeviceId: "", cursor: 0, nextCursor: 0, records }, tasks: tasks.length, memories };
+  }
+
+  /** Imports a bundle produced by {@link exportEverything} on another device. */
+  importEverything(bundle: { readonly records?: readonly unknown[] }): { readonly tasks: number; readonly memories: number } {
+    const runtime = this.require();
+    const records = bundle.records ?? [];
+    const shard = { sourceDeviceId: "", cursor: 0, nextCursor: 0, records };
+    const importedTask = runtime.importTask(shard as never);
+    const importedMemory = runtime.importMemories(shard as never);
+    return { tasks: importedTask.imported, memories: importedMemory.created + importedMemory.updated };
   }
 
   dispose(): void {
