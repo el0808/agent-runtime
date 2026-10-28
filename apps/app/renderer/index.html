@@ -241,6 +241,24 @@
             </div>
             <div class="note">Used only to show cost. Set input price to 0 to hide it.</div>
           </div>
+          <div class="section">
+            <h3>Updates</h3>
+            <div class="field">
+              <label>Version</label>
+              <div class="row">
+                <input id="update-version" class="in" readonly />
+                <button id="update-check" class="sm">Check for updates</button>
+              </div>
+              <div class="note" id="update-status">Updates come from this project's GitHub releases.</div>
+            </div>
+            <div class="field" id="update-actions" hidden>
+              <div class="row">
+                <button id="update-download" class="primary sm" hidden>Download</button>
+                <button id="update-install" class="primary sm" hidden>Restart and install</button>
+                <button id="update-release" class="ghost sm" hidden>Open release page</button>
+              </div>
+            </div>
+          </div>
         </div>
         <footer>
           <button id="settings-done" class="primary">Done</button>

@@ -838,9 +838,66 @@ async function saveKey() {
   renderProvider(result.provider);
 }
 
+/** Renders the updater's state into the settings panel. */
+function renderUpdate(status) {
+  if (status === null || typeof status !== "object") return;
+  const note = $("update-status");
+  const actions = $("update-actions");
+  const download = $("update-download");
+  const install = $("update-install");
+  const release = $("update-release");
+  if (note === null) return;
+
+  if (typeof status.currentVersion === "string") {
+    $("update-version").value = status.currentVersion;
+  }
+  if (status.canCheck === false) {
+    note.textContent = "This build cannot check for updates (only the packaged app can).";
+  }
+
+  actions.hidden = true;
+  download.hidden = true;
+  install.hidden = true;
+  release.hidden = true;
+
+  switch (status.state) {
+    case "checking":
+      note.textContent = "Checking GitHub for a newer version…";
+      break;
+    case "available":
+      note.textContent = `Version ${status.version} is available.`;
+      actions.hidden = false;
+      download.hidden = false;
+      break;
+    case "none":
+      note.textContent = `You are on the newest version (${status.current}).`;
+      break;
+    case "downloading":
+      note.textContent = `Downloading update… ${status.percent ?? 0}%`;
+      break;
+    case "ready":
+      note.textContent = `Version ${status.version} is downloaded and ready.`;
+      actions.hidden = false;
+      install.hidden = false;
+      // An unsigned build cannot auto-install; the release page always works.
+      release.hidden = false;
+      break;
+    case "error":
+      note.textContent = `Update check failed: ${status.message}`;
+      actions.hidden = false;
+      release.hidden = false;
+      break;
+    default:
+      break;
+  }
+}
+
 function openSettings() {
   $("overlay").hidden = false;
   void api.settings.get().then(fillSettings);
+  // The version and any pending update belong to the main process, so ask for
+  // them each time the panel opens rather than caching a stale answer.
+  void api.update.status().then(renderUpdate).catch(() => undefined);
 }
 
 function closeSettings() {
@@ -954,6 +1011,20 @@ function wire() {
       status.textContent = `Import failed: ${error?.message ?? error}`;
     }
   };
+
+  // Updates: show the running version immediately, then react to main's status.
+  $("update-check").onclick = async () => {
+    $("update-check").disabled = true;
+    try {
+      await api.update.check();
+    } finally {
+      $("update-check").disabled = false;
+    }
+  };
+  $("update-download").onclick = () => void api.update.download();
+  $("update-install").onclick = () => void api.update.install();
+  $("update-release").onclick = () => void api.update.openRelease();
+  api.update.onStatus(renderUpdate);
 
   $("settings-close").onclick = closeSettings;
   $("settings-done").onclick = () => {

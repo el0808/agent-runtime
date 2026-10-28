@@ -1,9 +1,9 @@
 {
   "name": "@agent/app",
-  "version": "0.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
-  "description": "Desktop app for the local-first agent runtime",
+  "description": "Desktop agent for the local-first agent runtime",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -b && node scripts/copy-preload.mjs",
@@ -19,11 +19,12 @@
     "@agent/protocol": "workspace:*",
     "@agent/routing": "workspace:*",
     "@agent/runner": "workspace:*",
+    "@agent/runtime": "workspace:*",
     "@agent/sync": "workspace:*",
     "@agent/task-ledger": "workspace:*",
     "@agent/tools": "workspace:*",
     "@agent/verifier": "workspace:*",
-    "@agent/runtime": "workspace:*"
+    "electron-updater": "^6.8.11"
   },
   "devDependencies": {
     "electron": "^45.0.0",
@@ -47,7 +48,17 @@
         "zip"
       ],
       "hardenedRuntime": true,
-      "gatekeeperAssess": false
-    }
+      "gatekeeperAssess": false,
+      "identity": null,
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "el0808",
+        "repo": "agent-runtime",
+        "releaseType": "release"
+      }
+    ]
   }
 }

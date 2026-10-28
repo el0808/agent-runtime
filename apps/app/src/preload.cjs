@@ -34,6 +34,16 @@ contextBridge.exposeInMainWorld("agent", {
       return () => ipcRenderer.removeListener("runtime:provider", handler);
     }
   },
+  update: {
+    status: () => ipcRenderer.invoke("update:status"),
+    check: () => ipcRenderer.invoke("update:check"),
+    download: () => ipcRenderer.invoke("update:download"),
+    install: () => ipcRenderer.invoke("update:install"),
+    openRelease: () => ipcRenderer.invoke("update:open-release"),
+    onStatus: (handler) => {
+      ipcRenderer.on("update:status", (_event, status) => handler(status));
+    }
+  },
   sync: {
     export: () => ipcRenderer.invoke("sync:export"),
     import: () => ipcRenderer.invoke("sync:import")

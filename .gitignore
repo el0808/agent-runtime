@@ -25,3 +25,6 @@ apps/desktop-app/renderer/live2d-bundle.js
 # stray screenshots captured during debugging
 chrome-screen.png
 learn-more.png
+
+# electron-builder output
+apps/app/release/

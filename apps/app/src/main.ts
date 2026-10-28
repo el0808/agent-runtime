@@ -6,6 +6,7 @@ import type { RunnerType } from "@agent/protocol";
 import { RuntimeHost } from "./runtime-host.js";
 import { SecretStore } from "./secrets.js";
 import { SettingsStore, type AppSettings } from "./settings.js";
+import { Updater, type UpdateStatus } from "./updater.js";
 
 const storageDir = path.join(app.getPath("userData"), "runtime");
 const settings = new SettingsStore(path.join(storageDir, "settings.json"));
@@ -18,6 +19,15 @@ function send(channel: string, payload: unknown): void {
     window.webContents.send(channel, payload);
   }
 }
+
+const RELEASE_URL = "https://github.com/el0808/agent-runtime/releases/latest";
+
+const updater = new Updater({
+  onChange: (status: UpdateStatus) => send("update:status", status),
+  onOpenRelease: () => {
+    void shell.openExternal(RELEASE_URL);
+  }
+});
 
 const host = new RuntimeHost({
   storageDir,
@@ -225,6 +235,17 @@ ipcMain.handle("sync:import", async () => {
   const parsed = JSON.parse(await readFile(file, "utf8")) as { records?: readonly unknown[] };
   const summary = host.importEverything(parsed);
   return { cancelled: false, ...summary };
+});
+
+/* ---------------- updates ---------------- */
+
+ipcMain.handle("update:status", () => ({ ...updater.current(), currentVersion: app.getVersion(), canCheck: updater.available() }));
+ipcMain.handle("update:check", () => updater.check());
+ipcMain.handle("update:download", () => updater.download());
+ipcMain.handle("update:install", () => updater.install());
+ipcMain.handle("update:open-release", () => {
+  void shell.openExternal(RELEASE_URL);
+  return { ok: true };
 });
 
 /* ---------------- lifecycle ---------------- */
