@@ -177,6 +177,21 @@ export OPENAI_API_KEY=... OPENAI_BASE_URL=https://api.example.com/v1 AGENT_MODEL
 node --experimental-strip-types packages/benchmark/dist/live-run.js --repeats 3
 ```
 
+### HumanEval
+
+164 道题，测的是 agent 循环本身而不是单次补全：agent 拿到只有 `prompt.txt` 的目录，自己写 `solution.py`、自己 `import` 自检，评分用题目自带的官方测试块在子进程里跑，超时算失败。数据集随包提供（`packages/benchmark/data/humaneval.jsonl`,来自 OpenAI 的 MIT 许可版本）。
+
+```bash
+export OPENAI_API_KEY=... OPENAI_BASE_URL=https://api.example.com/v1 AGENT_MODEL=your-model
+pnpm --filter @agent/benchmark run bench:humaneval --limit 20 --concurrency 4
+```
+
+`--concurrency` 默认 4：每个任务用独立的存储目录和独立工作目录，否则并发写同一个 SQLite 会锁死。
+
+**实测结果（gpt-6.1-sol，全量 164 题）**:pass@1 **99.4%**（163/164）,失败那题重跑 4 次全过，属于采样波动而非 harness 缺陷；延迟中位数 15.2 秒、p90 44.8 秒。
+
+需要说明的是，HumanEval 测的是单函数代码生成，难度远低于 SWE-bench 那种仓库级任务，这个分数反映的是模型能力加工具链可用性，不等于能解决真实工程问题。
+
 常用脚本：
 
 | 命令 | 用途 |

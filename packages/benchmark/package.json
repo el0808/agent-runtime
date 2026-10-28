@@ -12,11 +12,16 @@
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b --pretty false",
-    "bench:live": "node --experimental-strip-types dist/live-run.js"
+    "bench:live": "node --experimental-strip-types dist/live-run.js",
+    "bench:humaneval": "node --experimental-strip-types dist/humaneval-run.js"
   },
   "dependencies": {
     "@agent/protocol": "workspace:*",
     "@agent/runner": "workspace:*",
     "@agent/runtime": "workspace:*"
-  }
+  },
+  "files": [
+    "dist",
+    "data"
+  ]
 }
