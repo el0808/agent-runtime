@@ -11,6 +11,9 @@
     },
     {
       "path": "../runner"
+    },
+    {
+      "path": "../../apps/runtime"
     }
   ],
   "include": [
